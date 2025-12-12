@@ -4,7 +4,7 @@
   "tiers": {
     "haiku": {
       "description": "Fast model for exploration, glob, grep, quick tasks",
-      "model": "/Users/lucasventura/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit",
+      "model": "/Users/lucasventura/.lmstudio/models/lmstudio-community/Qwen2.5-3B-Instruct-MLX-4bit",
       "draft_model": ""
     },
     "sonnet": {

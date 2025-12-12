@@ -8,6 +8,226 @@ import {
     SearchIcon, EjectIcon, MenuIcon, XIcon, TagIcon, CheckIcon
 } from './Icons.js';
 
+// Easter egg: Matrix rain animation
+function triggerMatrixRain(logoElement) {
+    // Find the main app container
+    const appMain = document.querySelector('.app-main');
+    if (!appMain) return;
+
+    const rect = appMain.getBoundingClientRect();
+
+    // Always use dark overlay for Matrix effect
+    const overlayColor = 'rgba(0, 0, 0, 0.95)';
+    const trailColor = 'rgba(0, 0, 0, 0.05)';
+
+    // Show "Easter Egg found" label next to logo
+    const label = document.createElement('span');
+    label.textContent = 'Easter Egg found';
+    label.style.cssText = `
+        margin-left: 12px;
+        font-size: 12px;
+        color: var(--accent);
+        opacity: 0;
+        transition: opacity 0.5s ease;
+    `;
+    logoElement.appendChild(label);
+    requestAnimationFrame(() => label.style.opacity = '1');
+
+    // Create overlay only for main container
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+        position: fixed;
+        top: ${rect.top}px;
+        left: ${rect.left}px;
+        width: ${rect.width}px;
+        height: ${rect.height}px;
+        background: ${overlayColor};
+        z-index: 100;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.5s ease;
+    `;
+    document.body.appendChild(overlay);
+
+    // Phase 1: Fade in overlay (0.5s)
+    requestAnimationFrame(() => overlay.style.opacity = '1');
+
+    // Phase 2: Start rain quickly after overlay appears (0.5s)
+    setTimeout(() => {
+        const canvas = document.createElement('canvas');
+        canvas.id = 'matrix-rain';
+        canvas.style.cssText = `
+            position: fixed;
+            top: ${rect.top}px;
+            left: ${rect.left}px;
+            width: ${rect.width}px;
+            height: ${rect.height}px;
+            z-index: 101;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        `;
+        document.body.appendChild(canvas);
+
+        requestAnimationFrame(() => canvas.style.opacity = '1');
+
+        const ctx = canvas.getContext('2d');
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+
+        const chars = 'MLXmlx01アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン'.split('');
+        const fontSize = 18;
+        const columns = Math.floor(canvas.width / fontSize);
+        const rows = Math.ceil(canvas.height / fontSize);
+        const colors = ['#10b981', '#06b6d4', '#a855f7', '#3b82f6'];
+
+        // Grid stores the character and its brightness for each cell
+        const grid = [];
+        for (let i = 0; i < columns; i++) {
+            grid[i] = [];
+            for (let j = 0; j < rows; j++) {
+                grid[i][j] = {
+                    char: chars[Math.floor(Math.random() * chars.length)],
+                    brightness: 0
+                };
+            }
+        }
+
+        // Stream heads - multiple per column
+        const streams = [];
+        for (let i = 0; i < columns; i++) {
+            // 2-4 streams per column at different starting positions
+            const numStreams = 2 + Math.floor(Math.random() * 3);
+            for (let s = 0; s < numStreams; s++) {
+                streams.push({
+                    col: i,
+                    row: Math.floor(Math.random() * rows * 2) - rows,
+                    speed: 0.15 + Math.random() * 0.2,
+                    length: 8 + Math.floor(Math.random() * 12)
+                });
+            }
+        }
+
+        let frameCount = 0;
+        const maxFrames = 360; // 6 seconds at 60fps
+
+        function draw() {
+            // Clear with slight fade for trail effect
+            ctx.fillStyle = trailColor;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.font = `bold ${fontSize}px monospace`;
+
+            // Randomly change some characters in the grid
+            for (let i = 0; i < columns; i++) {
+                for (let j = 0; j < rows; j++) {
+                    if (Math.random() < 0.02) {
+                        grid[i][j].char = chars[Math.floor(Math.random() * chars.length)];
+                    }
+                    // Fade brightness over time
+                    if (grid[i][j].brightness > 0) {
+                        grid[i][j].brightness *= 0.92;
+                    }
+                }
+            }
+
+            // Update streams and set brightness
+            for (const stream of streams) {
+                stream.row += stream.speed;
+
+                // Set brightness for cells in this stream's trail
+                const headRow = Math.floor(stream.row);
+                for (let t = 0; t < stream.length; t++) {
+                    const r = headRow - t;
+                    if (r >= 0 && r < rows) {
+                        const brightness = t === 0 ? 1.0 : Math.pow(1 - (t / stream.length), 0.8);
+                        grid[stream.col][r].brightness = Math.max(grid[stream.col][r].brightness, brightness);
+                    }
+                }
+
+                // Reset stream when completely off screen
+                if (headRow - stream.length > rows) {
+                    stream.row = -stream.length - Math.random() * 20;
+                    stream.speed = 0.3 + Math.random() * 0.4;
+                    stream.length = 8 + Math.floor(Math.random() * 12);
+                }
+            }
+
+            // Draw all cells that have brightness
+            for (let i = 0; i < columns; i++) {
+                for (let j = 0; j < rows; j++) {
+                    const cell = grid[i][j];
+                    if (cell.brightness < 0.05) continue;
+
+                    const x = i * fontSize;
+                    const y = (j + 1) * fontSize;
+
+                    // Gradient based on both x and y position for smooth color transitions
+                    const t = ((i / columns) + (j / rows)) / 2;
+                    const colorIdx = t * (colors.length - 1);
+                    const c1 = Math.floor(colorIdx);
+                    const c2 = Math.min(c1 + 1, colors.length - 1);
+                    const blend = colorIdx - c1;
+
+                    // Interpolate between colors
+                    const color1 = colors[c1];
+                    const color2 = colors[c2];
+                    const r1 = parseInt(color1.slice(1, 3), 16);
+                    const g1 = parseInt(color1.slice(3, 5), 16);
+                    const b1 = parseInt(color1.slice(5, 7), 16);
+                    const r2 = parseInt(color2.slice(1, 3), 16);
+                    const g2 = parseInt(color2.slice(3, 5), 16);
+                    const b2 = parseInt(color2.slice(5, 7), 16);
+                    const r = Math.round(r1 + (r2 - r1) * blend);
+                    const g = Math.round(g1 + (g2 - g1) * blend);
+                    const b = Math.round(b1 + (b2 - b1) * blend);
+                    const color = `rgb(${r},${g},${b})`;
+
+                    if (cell.brightness > 0.95) {
+                        // Head - bright white with glow
+                        ctx.shadowBlur = 15;
+                        ctx.shadowColor = color;
+                        ctx.fillStyle = '#ffffff';
+                        ctx.globalAlpha = 1;
+                    } else {
+                        // Trail - colored with fade
+                        ctx.shadowBlur = 8;
+                        ctx.shadowColor = color;
+                        ctx.fillStyle = color;
+                        ctx.globalAlpha = cell.brightness;
+                    }
+
+                    ctx.fillText(cell.char, x, y);
+                }
+            }
+
+            ctx.globalAlpha = 1;
+
+            frameCount++;
+
+            if (frameCount < maxFrames) {
+                requestAnimationFrame(draw);
+            } else {
+                // Phase 3: Fade out everything (1s)
+                canvas.style.transition = 'opacity 1s ease';
+                canvas.style.opacity = '0';
+                overlay.style.transition = 'opacity 1s ease';
+                overlay.style.opacity = '0';
+                label.style.transition = 'opacity 0.5s ease';
+                label.style.opacity = '0';
+
+                setTimeout(() => {
+                    canvas.remove();
+                    overlay.remove();
+                    label.remove();
+                }, 1000);
+            }
+        }
+
+        requestAnimationFrame(draw);
+    }, 500); // Start rain after 0.5s (overlay fade)
+}
+
 export function TopBar() {
     const { currentModel, connected, loading, networkMode, networkAddresses, models, isLoadingModel } = useStore(s => ({
         currentModel: s.currentModel,
@@ -20,7 +240,35 @@ export function TopBar() {
     }));
 
     const [menuOpen, setMenuOpen] = useState(false);
+    const [clickCount, setClickCount] = useState(0);
+    const clickTimerRef = useRef(null);
     const menuRef = useRef(null);
+    const logoRef = useRef(null);
+
+    // Easter egg: Triple-click on logo
+    const handleLogoClick = useCallback(() => {
+        setClickCount(prev => {
+            const newCount = prev + 1;
+
+            // Reset timer
+            if (clickTimerRef.current) {
+                clearTimeout(clickTimerRef.current);
+            }
+
+            // Reset count after 500ms of no clicks
+            clickTimerRef.current = setTimeout(() => {
+                setClickCount(0);
+            }, 500);
+
+            // Trigger easter egg on 3rd click
+            if (newCount >= 3) {
+                triggerMatrixRain(logoRef.current);
+                return 0;
+            }
+
+            return newCount;
+        });
+    }, []);
 
     // Close menu when clicking outside
     useEffect(() => {
@@ -37,7 +285,7 @@ export function TopBar() {
 
     return html`
         <header class="topbar">
-            <div class="topbar-logo">
+            <div class="topbar-logo" ref=${logoRef} onClick=${handleLogoClick} style="cursor: pointer;">
                 <div class="topbar-logo-icon">M</div>
                 <span class="topbar-logo-text">MLX<span> Studio</span></span>
             </div>
@@ -113,17 +361,42 @@ function ModelDropdown({ currentModel, models, isLoadingModel }) {
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [showAliasInput, setShowAliasInput] = useState(false);
     const [aliasName, setAliasName] = useState('');
+    const [loadedModelIds, setLoadedModelIds] = useState([]);
     const dropdownRef = useRef(null);
     const inputRef = useRef(null);
     const aliasInputRef = useRef(null);
 
     const hasModel = !!currentModel;
 
+    // Fetch loaded models when dropdown opens
+    useEffect(() => {
+        if (isOpen) {
+            endpoints.loadedModels().then(data => {
+                const ids = (data.loaded || []).map(m => m.model_id);
+                setLoadedModelIds(ids);
+            }).catch(() => {});
+        }
+    }, [isOpen]);
+
+    // Sort models: loaded first, then alphabetically
+    const sortedModels = [...models].sort((a, b) => {
+        const aLoaded = loadedModelIds.some(id => a.path === id || a.id === id);
+        const bLoaded = loadedModelIds.some(id => b.path === id || b.id === id);
+        if (aLoaded && !bLoaded) return -1;
+        if (!aLoaded && bLoaded) return 1;
+        return a.name.localeCompare(b.name);
+    });
+
     // Filter models based on search
-    const filteredModels = models.filter(m =>
+    const filteredModels = sortedModels.filter(m =>
         m.name.toLowerCase().includes(search.toLowerCase()) ||
         m.id.toLowerCase().includes(search.toLowerCase())
     );
+
+    // Check if a model is loaded
+    const isModelLoaded = (model) => {
+        return loadedModelIds.some(id => model.path === id || model.id === id);
+    };
 
     // Close dropdown when clicking outside
     useEffect(() => {
@@ -264,7 +537,18 @@ function ModelDropdown({ currentModel, models, isLoadingModel }) {
                 <span class="model-selector-text ${!hasModel ? 'placeholder' : ''}">
                     ${hasModel ? currentModel.name : 'Select a model...'}
                 </span>
-                ${hasModel && html`<span class="model-selector-badge">loaded</span>`}
+                ${hasModel && html`
+                    <span class="model-selector-loaded">
+                        <span class="model-selector-badge">loaded</span>
+                        <button
+                            class="model-selector-unload"
+                            onClick=${unloadModel}
+                            title="Unload model"
+                        >
+                            <${EjectIcon} size=${12} />
+                        </button>
+                    </span>
+                `}
                 <span class="model-selector-arrow ${isOpen ? 'open' : ''}">
                     <${ChevronDownIcon} size=${14} />
                 </span>
@@ -285,56 +569,30 @@ function ModelDropdown({ currentModel, models, isLoadingModel }) {
                     </div>
 
                     <div class="model-dropdown-list">
-                        ${currentModel && !search ? html`
-                            ${showAliasInput ? html`
-                                <div class="model-dropdown-item alias-input-row" onClick=${e => e.stopPropagation()}>
-                                    <${TagIcon} size=${16} />
-                                    <input
-                                        ref=${aliasInputRef}
-                                        type="text"
-                                        class="alias-inline-input"
-                                        placeholder="Enter alias name..."
-                                        value=${aliasName}
-                                        onInput=${e => setAliasName(e.target.value)}
-                                        onKeyDown=${handleAliasKeyDown}
-                                    />
-                                    <button class="alias-save-btn" onClick=${saveAlias}>
-                                        <${CheckIcon} size=${14} />
-                                    </button>
-                                </div>
-                            ` : html`
-                                <div class="model-dropdown-item" onClick=${startSetAlias}>
-                                    <${TagIcon} size=${16} />
-                                    <span>Set Alias</span>
-                                </div>
-                            `}
-                            <div class="model-dropdown-item unload" onClick=${unloadModel}>
-                                <${EjectIcon} size=${16} />
-                                <span>Unload ${currentModel.name}</span>
-                            </div>
-                            <div class="model-dropdown-divider"></div>
-                        ` : ''}
-
                         ${filteredModels.length === 0 ? html`
                             <div class="model-dropdown-empty">
                                 No models found
                             </div>
-                        ` : filteredModels.map((model, idx) => html`
-                            <div
-                                class="model-dropdown-item ${model.id === currentModel?.id ? 'active' : ''} ${idx === selectedIndex ? 'selected' : ''}"
-                                onClick=${() => selectModel(model)}
-                                onMouseEnter=${() => setSelectedIndex(idx)}
-                            >
-                                <${BrainIcon} size=${16} />
-                                <div class="model-dropdown-item-info">
-                                    <span class="model-dropdown-item-name">${model.name}</span>
-                                    <span class="model-dropdown-item-meta">${model.vram}</span>
+                        ` : filteredModels.map((model, idx) => {
+                            const loaded = isModelLoaded(model);
+                            const isActive = model.id === currentModel?.id;
+                            return html`
+                                <div
+                                    class="model-dropdown-item ${isActive ? 'active' : ''} ${idx === selectedIndex ? 'selected' : ''} ${loaded ? 'loaded' : ''}"
+                                    onClick=${() => selectModel(model)}
+                                    onMouseEnter=${() => setSelectedIndex(idx)}
+                                >
+                                    <${BrainIcon} size=${16} />
+                                    <div class="model-dropdown-item-info">
+                                        <span class="model-dropdown-item-name">${model.name}</span>
+                                        <span class="model-dropdown-item-meta">${model.vram}</span>
+                                    </div>
+                                    ${loaded && html`
+                                        <span class="model-dropdown-item-badge">loaded</span>
+                                    `}
                                 </div>
-                                ${model.id === currentModel?.id && html`
-                                    <span class="model-dropdown-item-badge">loaded</span>
-                                `}
-                            </div>
-                        `)}
+                            `;
+                        })}
                     </div>
                 </div>
             `}

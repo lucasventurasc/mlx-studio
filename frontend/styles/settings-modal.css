@@ -17,13 +17,15 @@
 .settings-modal {
     width: 100%;
     max-width: 800px;
+    height: 600px;
     max-height: 90vh;
     background: var(--bg-1);
-    border: 1px solid var(--border);
+    border: 1px solid var(--accent-border);
     border-radius: 12px;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.4), 0 0 60px var(--accent-glow);
+    animation: scaleIn var(--transition-base);
 }
 
 /* Header */
@@ -62,6 +64,7 @@
     display: flex;
     flex: 1;
     overflow: hidden;
+    min-height: 0;
 }
 
 /* Tabs Navigation */
@@ -97,8 +100,9 @@
 }
 
 .settings-tab.active {
-    background: var(--accent);
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
     color: white;
+    box-shadow: 0 2px 8px var(--accent-glow);
 }
 
 .settings-tab svg {
@@ -247,16 +251,18 @@
 
 .slider-input::-webkit-slider-thumb {
     -webkit-appearance: none;
-    width: 16px;
-    height: 16px;
-    background: var(--accent);
+    width: 18px;
+    height: 18px;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
     border-radius: 50%;
     cursor: pointer;
-    transition: transform var(--transition-fast);
+    transition: all var(--transition-fast);
+    box-shadow: 0 2px 6px var(--accent-glow);
 }
 
 .slider-input::-webkit-slider-thumb:hover {
-    transform: scale(1.1);
+    transform: scale(1.15);
+    box-shadow: 0 4px 12px var(--accent-glow);
 }
 
 .setting-row {
@@ -337,8 +343,9 @@
 }
 
 .profile-card.active {
-    background: var(--accent);
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
     border-color: var(--accent);
+    box-shadow: 0 4px 12px var(--accent-glow);
 }
 
 .profile-card-name {
@@ -486,12 +493,22 @@
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 12px;
+    min-width: 0;
+}
+
+/* On narrower modals, stack the fields */
+@media (max-width: 900px) {
+    .tier-card-fields {
+        grid-template-columns: repeat(2, 1fr);
+    }
 }
 
 .tier-field {
     display: flex;
     flex-direction: column;
     gap: 4px;
+    min-width: 0;
+    overflow: hidden;
 }
 
 .tier-field label {
@@ -500,6 +517,7 @@
     display: flex;
     align-items: center;
     gap: 4px;
+    white-space: nowrap;
 }
 
 .tier-select {
@@ -510,6 +528,16 @@
     font-size: 12px;
     color: var(--fg-0);
     cursor: pointer;
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tier-select option {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .tier-card-current {
@@ -762,10 +790,12 @@
 
 .cache-stat-value.good {
     color: var(--success);
+    text-shadow: 0 0 12px var(--success-glow);
 }
 
 .cache-stat-value.ok {
     color: var(--warning);
+    text-shadow: 0 0 12px var(--warning-glow);
 }
 
 .cache-stat-label {
@@ -896,6 +926,7 @@
 
 .theme-option-card.active {
     border-color: var(--accent);
+    box-shadow: 0 0 20px var(--accent-glow);
 }
 
 .theme-preview {
@@ -1115,14 +1146,18 @@
     height: 8px;
     border-radius: 50%;
     background: var(--fg-3);
+    transition: all var(--transition-base);
 }
 
 .remote-status-dot.online {
     background: var(--success);
+    box-shadow: 0 0 8px var(--success-glow), 0 0 16px var(--success-glow);
+    animation: pulse 2s ease-in-out infinite;
 }
 
 .remote-status-dot.offline {
     background: var(--error);
+    box-shadow: 0 0 8px var(--error-glow);
 }
 
 .remote-item-name {

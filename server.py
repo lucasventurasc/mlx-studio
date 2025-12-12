@@ -24,9 +24,13 @@ import json
 import argparse
 import logging
 import asyncio
+import threading
 from pathlib import Path
 from collections import deque
 from typing import Dict, Optional, AsyncGenerator
+
+# Global lock for MLX GPU operations - prevents Metal command buffer conflicts
+_mlx_lock = threading.Lock()
 
 # =============================================================================
 # Cache Configuration (set before importing mlx-omni-server)
@@ -285,7 +289,9 @@ def get_prompt_cache_stats():
         for key, wrapper in wrapper_cache._cache.items():
             if hasattr(wrapper, 'prompt_cache') and wrapper._prompt_cache is not None:
                 cache_stats = wrapper.prompt_cache.get_stats()
-                stats[key] = cache_stats
+                # Convert key to string for JSON serialization
+                key_str = str(key)
+                stats[key_str] = cache_stats
     except Exception as e:
         logger.warning(f"Failed to get prompt cache stats: {e}")
 
@@ -306,7 +312,8 @@ def get_prompt_cache_health():
         for key, wrapper in wrapper_cache._cache.items():
             if hasattr(wrapper, 'prompt_cache') and wrapper._prompt_cache is not None:
                 report = wrapper.prompt_cache.get_health_report()
-                reports.append({"model": key, "report": report})
+                # Convert key to string for JSON serialization
+                reports.append({"model": str(key), "report": report})
     except Exception as e:
         logger.warning(f"Failed to get prompt cache health: {e}")
 
@@ -752,58 +759,64 @@ def list_local_models():
 
 @app.post("/api/models/load")
 def load_model(model_id: str, warmup_prompt: str = None):
-    """Pre-load a model into memory cache with optional prompt warmup."""
+    """Pre-load a model into memory cache with optional prompt warmup.
+
+    This is the only safe way to load models - prevents concurrent GPU access.
+    Must be called before making chat/completion requests to a model.
+    """
     import time
     from mlx_omni_server.chat.mlx.chat_generator import ChatGenerator
 
-    start = time.time()
-    try:
-        # Check if model exists locally (LM Studio or HuggingFace cache)
-        local_models = model_manager.list_local_models()
-        local_model = next((m for m in local_models if m.id == model_id), None)
+    # Use global lock to prevent concurrent model loading
+    with _mlx_lock:
+        start = time.time()
+        try:
+            # Check if model exists locally (LM Studio or HuggingFace cache)
+            local_models = model_manager.list_local_models()
+            local_model = next((m for m in local_models if m.id == model_id), None)
 
-        # Use local path if available
-        load_path = local_model.path if local_model else model_id
-        logger.info(f"Pre-loading model: {model_id} from {load_path}")
+            # Use local path if available
+            load_path = local_model.path if local_model else model_id
+            logger.info(f"Pre-loading model: {model_id} from {load_path}")
 
-        wrapper = ChatGenerator.get_or_create(model_id=load_path)
-        model_time = time.time() - start
-        logger.info(f"Model loaded in {model_time:.1f}s: {model_id}")
+            wrapper = ChatGenerator.get_or_create(model_id=load_path)
+            model_time = time.time() - start
+            logger.info(f"Model loaded in {model_time:.1f}s: {model_id}")
 
-        warmup_time = 0
-        warmup_tokens = 0
+            warmup_time = 0
+            warmup_tokens = 0
 
-        # Warmup with system prompt if provided
-        if warmup_prompt:
-            warmup_start = time.time()
-            logger.info(f"Warming up KV cache with prompt ({len(warmup_prompt)} chars)...")
+            # Warmup with system prompt if provided
+            if warmup_prompt:
+                warmup_start = time.time()
+                logger.info(f"Warming up KV cache with prompt ({len(warmup_prompt)} chars)...")
 
-            # Generate 1 token to build KV cache for the system prompt
-            messages = [{"role": "system", "content": warmup_prompt}]
-            result = wrapper.generate(
-                messages=messages,
-                max_tokens=1,
-                enable_prompt_cache=True
-            )
-            warmup_time = time.time() - warmup_start
-            warmup_tokens = result.stats.prompt_tokens if result.stats else 0
-            logger.info(f"KV cache warmed: {warmup_tokens} tokens in {warmup_time:.1f}s")
+                # Generate 1 token to build KV cache for the system prompt
+                messages = [{"role": "system", "content": warmup_prompt}]
+                result = wrapper.generate(
+                    messages=messages,
+                    max_tokens=1,
+                    enable_prompt_cache=True
+                )
+                warmup_time = time.time() - warmup_start
+                warmup_tokens = result.stats.prompt_tokens if result.stats else 0
+                logger.info(f"KV cache warmed: {warmup_tokens} tokens in {warmup_time:.1f}s")
 
-        elapsed = time.time() - start
-        return {
-            "status": "loaded",
-            "model_id": model_id,
-            "path": load_path,
-            "time": round(elapsed, 2),
-            "warmup": {
-                "enabled": warmup_prompt is not None,
-                "tokens": warmup_tokens,
-                "time": round(warmup_time, 2)
-            } if warmup_prompt else None
-        }
-    except Exception as e:
-        logger.error(f"Failed to load model {model_id}: {e}")
-        return {"status": "error", "model_id": model_id, "error": str(e)}
+            elapsed = time.time() - start
+            return {
+                "status": "loaded",
+                "model_id": model_id,
+                "path": load_path,
+                "time": round(elapsed, 2),
+                "warmup": {
+                    "enabled": warmup_prompt is not None,
+                    "tokens": warmup_tokens,
+                    "time": round(warmup_time, 2)
+                } if warmup_prompt else None
+            }
+        except Exception as e:
+            logger.error(f"Failed to load model {model_id}: {e}")
+            return {"status": "error", "model_id": model_id, "error": str(e)}
 
 
 @app.post("/api/models/warmup")
@@ -877,18 +890,68 @@ def delete_learned_prompt(model_id: str):
     return {"status": "not_found", "model_id": model_id}
 
 
-@app.post("/api/models/unload")
-def unload_model(model_id: str = None):
-    """Unload model(s) from memory cache."""
+@app.get("/api/models/loaded")
+def get_loaded_models():
+    """Get list of currently loaded models in memory."""
     from mlx_omni_server.chat.mlx.wrapper_cache import wrapper_cache
 
-    try:
-        wrapper_cache.clear_cache()
-        logger.info("Cleared all model cache - memory freed")
-        return {"status": "cleared", "message": "All models unloaded"}
-    except Exception as e:
-        logger.error(f"Failed to unload model: {e}")
-        return {"status": "error", "error": str(e)}
+    cache_info = wrapper_cache.get_cache_info()
+
+    # Parse the cached_keys to extract model IDs
+    loaded_models = []
+    for key_str in cache_info.get("cached_keys", []):
+        # Key format: WrapperCacheKey(model_id='...', adapter_path=..., draft_model_id=...)
+        # Extract model_id from string representation
+        if "model_id='" in key_str:
+            start = key_str.find("model_id='") + len("model_id='")
+            end = key_str.find("'", start)
+            model_id = key_str[start:end]
+            loaded_models.append({
+                "model_id": model_id,
+                "key": key_str
+            })
+
+    return {
+        "loaded": loaded_models,
+        "count": len(loaded_models),
+        "max_size": cache_info.get("max_size", 0)
+    }
+
+
+@app.post("/api/models/unload")
+def unload_model(model_id: str = None):
+    """Unload model(s) from memory cache and free GPU memory."""
+    import gc
+    import mlx.core as mx
+    from mlx_omni_server.chat.mlx.wrapper_cache import wrapper_cache
+
+    # Use lock to prevent unloading during generation
+    with _mlx_lock:
+        try:
+            # Clear the wrapper cache (ChatGenerator instances)
+            wrapper_cache.clear_cache()
+
+            # Clear SmartPromptCache if available
+            try:
+                from mlx_omni_server.chat.mlx.smart_prompt_cache import smart_cache
+                smart_cache.clear()
+            except ImportError:
+                pass
+
+            # Force Python garbage collection
+            gc.collect()
+
+            # Synchronize GPU before clearing cache to avoid race conditions
+            mx.eval(mx.zeros(1))  # Force any pending GPU ops to complete
+
+            # Clear MLX memory cache - this actually frees GPU memory
+            mx.metal.clear_cache()
+
+            logger.info("Unloaded all models and cleared GPU memory")
+            return {"status": "cleared", "message": "All models unloaded and GPU memory freed"}
+        except Exception as e:
+            logger.error(f"Failed to unload model: {e}")
+            return {"status": "error", "error": str(e)}
 
 
 @app.get("/api/models/search")

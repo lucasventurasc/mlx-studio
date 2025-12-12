@@ -1,46 +1,64 @@
 /* ==================== DESIGN TOKENS ==================== */
 :root {
-    /* Backgrounds - Dark theme inspired by Claude UI */
-    --bg-0: #0a0a0a;
-    --bg-1: #0f0f0f;
-    --bg-2: #171717;
-    --bg-3: #1f1f1f;
-    --bg-4: #292929;
-    --bg-elevated: #1a1a1a;
-    --bg-hover: rgba(255, 255, 255, 0.04);
-    --bg-active: rgba(255, 255, 255, 0.08);
+    /* Backgrounds - Dark theme with depth */
+    --bg-0: #0a0a0c;
+    --bg-1: #0f1012;
+    --bg-2: #161719;
+    --bg-3: #1e1f23;
+    --bg-4: #27282d;
+    --bg-elevated: #1a1b1f;
+    --bg-hover: rgba(255, 255, 255, 0.05);
+    --bg-active: rgba(255, 255, 255, 0.1);
 
     /* Foregrounds */
-    --fg-0: #fafafa;
-    --fg-1: #a1a1a1;
-    --fg-2: #737373;
-    --fg-3: #525252;
-    --fg-muted: #404040;
+    --fg-0: #f0f0f2;
+    --fg-1: #a8a8b3;
+    --fg-2: #6e6e7a;
+    --fg-3: #4a4a54;
+    --fg-muted: #35353d;
 
-    /* Accent - Green */
-    --accent: #22c55e;
-    --accent-hover: #16a34a;
-    --accent-muted: rgba(34, 197, 94, 0.15);
-    --accent-border: rgba(34, 197, 94, 0.3);
+    /* Accent - Vibrant Green */
+    --accent: #10b981;
+    --accent-hover: #34d399;
+    --accent-muted: rgba(16, 185, 129, 0.15);
+    --accent-border: rgba(16, 185, 129, 0.4);
+    --accent-glow: rgba(16, 185, 129, 0.5);
 
-    /* Semantic Colors */
+    /* Secondary Accent - Cyan */
+    --accent-2: #06b6d4;
+    --accent-2-muted: rgba(6, 182, 212, 0.15);
+    --accent-2-glow: rgba(6, 182, 212, 0.5);
+
+    /* Tertiary Accent - Purple */
+    --accent-3: #a855f7;
+    --accent-3-muted: rgba(168, 85, 247, 0.15);
+    --accent-3-glow: rgba(168, 85, 247, 0.5);
+
+    /* Semantic Colors - More vibrant */
     --info: #3b82f6;
     --info-muted: rgba(59, 130, 246, 0.15);
-    --warning: #eab308;
-    --warning-muted: rgba(234, 179, 8, 0.15);
-    --error: #ef4444;
-    --error-muted: rgba(239, 68, 68, 0.15);
-    --success: #22c55e;
-    --success-muted: rgba(34, 197, 94, 0.15);
+    --info-glow: rgba(59, 130, 246, 0.4);
+    --warning: #f59e0b;
+    --warning-muted: rgba(245, 158, 11, 0.15);
+    --warning-glow: rgba(245, 158, 11, 0.4);
+    --error: #f43f5e;
+    --error-muted: rgba(244, 63, 94, 0.15);
+    --error-glow: rgba(244, 63, 94, 0.4);
+    --success: #10b981;
+    --success-muted: rgba(16, 185, 129, 0.15);
+    --success-glow: rgba(16, 185, 129, 0.4);
 
-    /* Role Colors */
+    /* Role Colors - Gradient-ready */
     --user-color: #3b82f6;
+    --user-glow: rgba(59, 130, 246, 0.4);
     --assistant-color: #a855f7;
-    --system-color: #eab308;
+    --assistant-glow: rgba(168, 85, 247, 0.4);
+    --system-color: #f59e0b;
+    --system-glow: rgba(245, 158, 11, 0.4);
 
     /* Borders */
-    --border: #262626;
-    --border-light: #333333;
+    --border: #262630;
+    --border-light: #333340;
     --border-focus: var(--accent);
 
     /* Typography */
@@ -86,115 +104,151 @@
 
 /* ==================== LIGHT MODE ==================== */
 [data-theme="light"] {
-    /* Backgrounds - Light theme inspired by Claude UI */
-    --bg-0: #ffffff;
-    --bg-1: #fafafa;
-    --bg-2: #f5f5f5;
-    --bg-3: #ebebeb;
-    --bg-4: #e0e0e0;
+    /* Backgrounds - Light theme with subtle cool tint */
+    --bg-0: #f7f9fc;
+    --bg-1: #f0f4f8;
+    --bg-2: #e4ebf2;
+    --bg-3: #d6e0ea;
+    --bg-4: #c8d5e2;
     --bg-elevated: #ffffff;
-    --bg-hover: rgba(0, 0, 0, 0.04);
-    --bg-active: rgba(0, 0, 0, 0.08);
+    --bg-hover: rgba(16, 185, 129, 0.08);
+    --bg-active: rgba(16, 185, 129, 0.15);
 
     /* Foregrounds */
-    --fg-0: #171717;
-    --fg-1: #525252;
-    --fg-2: #737373;
-    --fg-3: #a1a1a1;
-    --fg-muted: #d4d4d4;
+    --fg-0: #1a1f2e;
+    --fg-1: #3d4663;
+    --fg-2: #5a6580;
+    --fg-3: #8892a8;
+    --fg-muted: #b0b8c8;
 
-    /* Accent - Green (slightly adjusted for light mode) */
-    --accent: #16a34a;
-    --accent-hover: #15803d;
-    --accent-muted: rgba(22, 163, 74, 0.12);
-    --accent-border: rgba(22, 163, 74, 0.25);
+    /* Accent - Vibrant Green */
+    --accent: #059669;
+    --accent-hover: #10b981;
+    --accent-muted: rgba(5, 150, 105, 0.12);
+    --accent-border: rgba(5, 150, 105, 0.3);
+    --accent-glow: rgba(5, 150, 105, 0.3);
+
+    /* Secondary Accent - Cyan */
+    --accent-2: #0891b2;
+    --accent-2-muted: rgba(8, 145, 178, 0.12);
+    --accent-2-glow: rgba(8, 145, 178, 0.3);
+
+    /* Tertiary Accent - Purple */
+    --accent-3: #9333ea;
+    --accent-3-muted: rgba(147, 51, 234, 0.12);
+    --accent-3-glow: rgba(147, 51, 234, 0.3);
 
     /* Semantic Colors */
     --info: #2563eb;
-    --info-muted: rgba(37, 99, 235, 0.12);
-    --warning: #ca8a04;
-    --warning-muted: rgba(202, 138, 4, 0.12);
-    --error: #dc2626;
-    --error-muted: rgba(220, 38, 38, 0.12);
-    --success: #16a34a;
-    --success-muted: rgba(22, 163, 74, 0.12);
+    --info-muted: rgba(37, 99, 235, 0.1);
+    --info-glow: rgba(37, 99, 235, 0.25);
+    --warning: #d97706;
+    --warning-muted: rgba(217, 119, 6, 0.1);
+    --warning-glow: rgba(217, 119, 6, 0.25);
+    --error: #e11d48;
+    --error-muted: rgba(225, 29, 72, 0.1);
+    --error-glow: rgba(225, 29, 72, 0.25);
+    --success: #059669;
+    --success-muted: rgba(5, 150, 105, 0.1);
+    --success-glow: rgba(5, 150, 105, 0.25);
 
     /* Role Colors */
     --user-color: #2563eb;
+    --user-glow: rgba(37, 99, 235, 0.25);
     --assistant-color: #9333ea;
-    --system-color: #ca8a04;
+    --assistant-glow: rgba(147, 51, 234, 0.25);
+    --system-color: #d97706;
+    --system-glow: rgba(217, 119, 6, 0.25);
 
     /* Borders */
-    --border: #e5e5e5;
-    --border-light: #d4d4d4;
+    --border: #d0d9e6;
+    --border-light: #b8c5d8;
     --border-focus: var(--accent);
 
-    /* Shadows (lighter for light mode) */
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
-    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
-    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
-    --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.15);
+    /* Shadows (with color) */
+    --shadow-sm: 0 1px 2px rgba(30, 50, 80, 0.06);
+    --shadow-md: 0 4px 12px rgba(30, 50, 80, 0.08);
+    --shadow-lg: 0 8px 24px rgba(30, 50, 80, 0.1);
+    --shadow-xl: 0 16px 48px rgba(30, 50, 80, 0.12);
 
-    /* Code block colors (light) */
-    --code-bg: #f6f8fa;
-    --code-header-bg: #eaeef2;
+    /* Code block colors */
+    --code-bg: #f0f4f8;
+    --code-header-bg: #e4ebf2;
 }
 
-/* Prefer system color scheme */
+/* Prefer system color scheme - inherits from [data-theme="light"] */
 @media (prefers-color-scheme: light) {
     :root:not([data-theme="dark"]) {
-        /* Backgrounds - Light theme inspired by Claude UI */
-        --bg-0: #ffffff;
-        --bg-1: #fafafa;
-        --bg-2: #f5f5f5;
-        --bg-3: #ebebeb;
-        --bg-4: #e0e0e0;
+        /* Backgrounds - Light theme with subtle cool tint */
+        --bg-0: #f7f9fc;
+        --bg-1: #f0f4f8;
+        --bg-2: #e4ebf2;
+        --bg-3: #d6e0ea;
+        --bg-4: #c8d5e2;
         --bg-elevated: #ffffff;
-        --bg-hover: rgba(0, 0, 0, 0.04);
-        --bg-active: rgba(0, 0, 0, 0.08);
+        --bg-hover: rgba(16, 185, 129, 0.08);
+        --bg-active: rgba(16, 185, 129, 0.15);
 
         /* Foregrounds */
-        --fg-0: #171717;
-        --fg-1: #525252;
-        --fg-2: #737373;
-        --fg-3: #a1a1a1;
-        --fg-muted: #d4d4d4;
+        --fg-0: #1a1f2e;
+        --fg-1: #3d4663;
+        --fg-2: #5a6580;
+        --fg-3: #8892a8;
+        --fg-muted: #b0b8c8;
 
-        /* Accent - Green (slightly adjusted for light mode) */
-        --accent: #16a34a;
-        --accent-hover: #15803d;
-        --accent-muted: rgba(22, 163, 74, 0.12);
-        --accent-border: rgba(22, 163, 74, 0.25);
+        /* Accent - Vibrant Green */
+        --accent: #059669;
+        --accent-hover: #10b981;
+        --accent-muted: rgba(5, 150, 105, 0.12);
+        --accent-border: rgba(5, 150, 105, 0.3);
+        --accent-glow: rgba(5, 150, 105, 0.3);
+
+        /* Secondary Accent - Cyan */
+        --accent-2: #0891b2;
+        --accent-2-muted: rgba(8, 145, 178, 0.12);
+        --accent-2-glow: rgba(8, 145, 178, 0.3);
+
+        /* Tertiary Accent - Purple */
+        --accent-3: #9333ea;
+        --accent-3-muted: rgba(147, 51, 234, 0.12);
+        --accent-3-glow: rgba(147, 51, 234, 0.3);
 
         /* Semantic Colors */
         --info: #2563eb;
-        --info-muted: rgba(37, 99, 235, 0.12);
-        --warning: #ca8a04;
-        --warning-muted: rgba(202, 138, 4, 0.12);
-        --error: #dc2626;
-        --error-muted: rgba(220, 38, 38, 0.12);
-        --success: #16a34a;
-        --success-muted: rgba(22, 163, 74, 0.12);
+        --info-muted: rgba(37, 99, 235, 0.1);
+        --info-glow: rgba(37, 99, 235, 0.25);
+        --warning: #d97706;
+        --warning-muted: rgba(217, 119, 6, 0.1);
+        --warning-glow: rgba(217, 119, 6, 0.25);
+        --error: #e11d48;
+        --error-muted: rgba(225, 29, 72, 0.1);
+        --error-glow: rgba(225, 29, 72, 0.25);
+        --success: #059669;
+        --success-muted: rgba(5, 150, 105, 0.1);
+        --success-glow: rgba(5, 150, 105, 0.25);
 
         /* Role Colors */
         --user-color: #2563eb;
+        --user-glow: rgba(37, 99, 235, 0.25);
         --assistant-color: #9333ea;
-        --system-color: #ca8a04;
+        --assistant-glow: rgba(147, 51, 234, 0.25);
+        --system-color: #d97706;
+        --system-glow: rgba(217, 119, 6, 0.25);
 
         /* Borders */
-        --border: #e5e5e5;
-        --border-light: #d4d4d4;
+        --border: #d0d9e6;
+        --border-light: #b8c5d8;
         --border-focus: var(--accent);
 
-        /* Shadows (lighter for light mode) */
-        --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
-        --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
-        --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
-        --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.15);
+        /* Shadows (with color) */
+        --shadow-sm: 0 1px 2px rgba(30, 50, 80, 0.06);
+        --shadow-md: 0 4px 12px rgba(30, 50, 80, 0.08);
+        --shadow-lg: 0 8px 24px rgba(30, 50, 80, 0.1);
+        --shadow-xl: 0 16px 48px rgba(30, 50, 80, 0.12);
 
-        /* Code block colors (light) */
-        --code-bg: #f6f8fa;
-        --code-header-bg: #eaeef2;
+        /* Code block colors */
+        --code-bg: #f0f4f8;
+        --code-header-bg: #e4ebf2;
     }
 }
 
@@ -279,6 +333,32 @@ html, body, #app {
 @keyframes thinking {
     0%, 80%, 100% { transform: scale(1); opacity: 0.4; }
     40% { transform: scale(1.2); opacity: 1; }
+}
+
+@keyframes glow {
+    0%, 100% { box-shadow: 0 0 5px var(--accent-glow), 0 0 10px var(--accent-glow); }
+    50% { box-shadow: 0 0 15px var(--accent-glow), 0 0 25px var(--accent-glow); }
+}
+
+@keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+@keyframes gradientShift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
+}
+
+@keyframes borderGlow {
+    0%, 100% { border-color: var(--accent); box-shadow: 0 0 0 0 var(--accent-glow); }
+    50% { border-color: var(--accent-hover); box-shadow: 0 0 8px 2px var(--accent-glow); }
 }
 
 /* ==================== UTILITY CLASSES ==================== */

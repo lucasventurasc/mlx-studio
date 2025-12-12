@@ -135,6 +135,7 @@ export const endpoints = {
     // Model loading (pre-load into memory)
     loadModel: (modelId) => api.post(`/api/models/load?model_id=${encodeURIComponent(modelId)}`),
     unloadModel: () => api.post('/api/models/unload'),
+    loadedModels: () => api.get('/api/models/loaded'),
     refreshModels: () => api.get('/v1/models'),
 
     // Status - use health endpoint

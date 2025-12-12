@@ -13,6 +13,85 @@
     overflow: hidden;
 }
 
+/* ==================== OFFLINE SCREEN ==================== */
+.offline-screen {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    background: var(--bg-0);
+    background-image: radial-gradient(circle at 50% 30%, var(--accent-muted) 0%, transparent 50%);
+}
+
+.offline-content {
+    text-align: center;
+    max-width: 400px;
+    padding: var(--space-6);
+    animation: slideUp var(--transition-slow);
+}
+
+.offline-icon {
+    color: var(--error);
+    margin-bottom: var(--space-4);
+    animation: pulse 2s ease-in-out infinite;
+    filter: drop-shadow(0 0 12px var(--error-glow));
+}
+
+.offline-content h1 {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--fg-0);
+    margin: 0 0 var(--space-2) 0;
+}
+
+.offline-content > p {
+    color: var(--fg-2);
+    margin: 0 0 var(--space-4) 0;
+}
+
+.offline-instructions {
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    margin-bottom: var(--space-4);
+    box-shadow: var(--shadow-md);
+}
+
+.offline-instructions p {
+    color: var(--fg-2);
+    font-size: 13px;
+    margin: 0 0 var(--space-2) 0;
+}
+
+.offline-instructions code {
+    display: block;
+    background: var(--bg-2);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    color: var(--accent);
+    border: 1px solid var(--accent-border);
+}
+
+.offline-content .btn-primary {
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
+    color: white;
+    border: none;
+    padding: var(--space-3) var(--space-5);
+    border-radius: var(--radius-md);
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transition-base);
+    box-shadow: 0 4px 12px var(--accent-glow);
+}
+
+.offline-content .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px var(--accent-glow);
+}
+
 /* ==================== TOP BAR ==================== */
 .topbar {
     display: flex;
@@ -22,7 +101,7 @@
     padding: var(--space-1) var(--space-4);
     background: var(--bg-1);
     border-bottom: 1px solid var(--border);
-    height: 44px;
+    height: 65px;
     flex-shrink: 0;
     position: relative;
 }
@@ -38,14 +117,23 @@
 .topbar-logo-icon {
     width: 28px;
     height: 28px;
-    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 50%, var(--accent-3) 100%);
+    background-size: 200% 200%;
+    animation: gradientShift 4s ease infinite;
     border-radius: var(--radius-sm);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-weight: 600;
+    font-weight: 700;
     font-size: 14px;
-    color: var(--bg-0);
+    color: white;
+    box-shadow: 0 2px 8px var(--accent-glow);
+    transition: all var(--transition-base);
+}
+
+.topbar-logo:hover .topbar-logo-icon {
+    box-shadow: 0 4px 16px var(--accent-glow), 0 0 24px var(--accent-glow);
+    transform: scale(1.05);
 }
 
 .topbar-logo-text {
@@ -55,7 +143,11 @@
 }
 
 .topbar-logo-text span {
-    color: var(--accent);
+    background: linear-gradient(90deg, var(--accent) 0%, var(--accent-2) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-weight: 600;
 }
 
 .topbar-center {
@@ -152,7 +244,7 @@
     border-radius: var(--radius-md);
     border: 1px solid transparent;
     cursor: pointer;
-    transition: all var(--transition-fast);
+    transition: all var(--transition-base);
     white-space: nowrap;
 }
 
@@ -162,12 +254,20 @@
 }
 
 .btn-primary {
-    background: var(--accent);
-    color: var(--bg-0);
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
+    color: white;
+    box-shadow: 0 2px 8px var(--accent-glow);
 }
 
 .btn-primary:hover:not(:disabled) {
-    background: var(--accent-hover);
+    background: linear-gradient(135deg, var(--accent-hover) 0%, var(--accent) 100%);
+    box-shadow: 0 4px 16px var(--accent-glow);
+    transform: translateY(-1px);
+}
+
+.btn-primary:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px var(--accent-glow);
 }
 
 .btn-secondary {
@@ -178,7 +278,8 @@
 
 .btn-secondary:hover:not(:disabled) {
     background: var(--bg-4);
-    border-color: var(--border-light);
+    border-color: var(--accent-border);
+    box-shadow: 0 0 0 1px var(--accent-border);
 }
 
 .btn-ghost {
@@ -188,7 +289,7 @@
 
 .btn-ghost:hover:not(:disabled) {
     background: var(--bg-hover);
-    color: var(--fg-0);
+    color: var(--accent);
 }
 
 .btn-icon {
@@ -202,7 +303,14 @@
 
 .btn-icon:hover:not(:disabled) {
     background: var(--bg-3);
-    color: var(--fg-0);
+    color: var(--accent);
+    border-color: var(--accent-border);
+    box-shadow: 0 0 12px var(--accent-glow);
+}
+
+/* Glowing accent button */
+.btn-glow {
+    animation: glow 2s ease-in-out infinite;
 }
 
 /* ==================== INPUT CLAUDE STYLE ==================== */
@@ -222,12 +330,12 @@
     background: var(--bg-1);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    transition: all var(--transition-fast);
+    transition: all var(--transition-base);
 }
 
 .chat-input-box:focus-within {
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-muted);
+    box-shadow: 0 0 0 3px var(--accent-muted), 0 0 20px var(--accent-glow);
 }
 
 .chat-input-inner {
@@ -294,17 +402,24 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--accent);
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
     border: none;
     border-radius: var(--radius-md);
     color: white;
     cursor: pointer;
-    transition: all var(--transition-fast);
+    transition: all var(--transition-base);
+    box-shadow: 0 2px 8px var(--accent-glow);
 }
 
 .chat-input-send:hover:not(:disabled) {
-    background: var(--accent-hover);
-    transform: translateY(-1px);
+    background: linear-gradient(135deg, var(--accent-hover) 0%, var(--accent) 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px var(--accent-glow);
+}
+
+.chat-input-send:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px var(--accent-glow);
 }
 
 .chat-input-send:disabled {
@@ -312,6 +427,7 @@
     color: var(--fg-3);
     cursor: not-allowed;
     transform: none;
+    box-shadow: none;
 }
 
 .chat-input-send svg {
@@ -458,18 +574,21 @@
 }
 
 .message-avatar.user {
-    background: var(--accent);
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
     color: white;
+    box-shadow: 0 2px 8px var(--accent-glow);
 }
 
 .message-avatar.assistant {
-    background: var(--bg-3);
-    color: var(--fg-1);
+    background: linear-gradient(135deg, var(--accent-3) 0%, var(--accent-3-muted) 100%);
+    color: white;
+    box-shadow: 0 2px 8px var(--accent-3-glow);
 }
 
 .message-avatar.system {
-    background: var(--warning-muted);
-    color: var(--warning);
+    background: linear-gradient(135deg, var(--warning) 0%, var(--warning-muted) 100%);
+    color: white;
+    box-shadow: 0 2px 8px var(--warning-glow);
 }
 
 .message-content {
@@ -509,10 +628,11 @@
 }
 
 .message.user .message-bubble {
-    background: var(--accent);
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
     color: white;
     border-bottom-right-radius: var(--radius-sm);
     margin-left: auto;
+    box-shadow: 0 2px 12px var(--accent-glow);
 }
 
 .message.assistant .message-bubble {
@@ -620,15 +740,16 @@
 /* Thinking indicator */
 .thinking-dots {
     display: flex;
-    gap: 4px;
+    gap: 6px;
 }
 
 .thinking-dots span {
-    width: 8px;
-    height: 8px;
-    background: var(--assistant-color);
+    width: 10px;
+    height: 10px;
+    background: linear-gradient(135deg, var(--accent-3) 0%, var(--accent) 100%);
     border-radius: 50%;
     animation: thinking 1.4s ease-in-out infinite;
+    box-shadow: 0 0 8px var(--accent-3-glow);
 }
 
 .thinking-dots span:nth-child(2) { animation-delay: 0.16s; }
@@ -708,9 +829,9 @@
     width: 100%;
     max-width: 640px;
     background: var(--bg-1);
-    border: 1px solid var(--border);
+    border: 1px solid var(--accent-border);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-xl);
+    box-shadow: var(--shadow-xl), 0 0 40px var(--accent-glow);
     overflow: hidden;
     animation: scaleIn var(--transition-base);
 }
@@ -896,20 +1017,27 @@
     min-width: 600px;
     max-width: 600px;
     height: 36px;
-    transition: all var(--transition-fast);
+    transition: all var(--transition-base);
 }
 
 .model-selector:hover {
     background: var(--bg-3);
-    border-color: var(--border-light);
+    border-color: var(--accent-border);
+    box-shadow: 0 0 16px var(--accent-glow);
 }
 
 .model-selector-icon {
     width: 16px;
     height: 16px;
-    color: var(--fg-2);
+    color: var(--accent);
     display: flex;
     align-items: center;
+    transition: all var(--transition-base);
+}
+
+.model-selector:hover .model-selector-icon {
+    color: var(--accent-hover);
+    filter: drop-shadow(0 0 4px var(--accent-glow));
 }
 
 .model-selector-icon svg {
@@ -930,14 +1058,50 @@
     color: var(--fg-2);
 }
 
+.model-selector-loaded {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+}
+
 .model-selector-badge {
     padding: 2px 8px;
-    background: var(--accent-muted);
+    background: linear-gradient(135deg, var(--accent-muted) 0%, var(--accent-2-muted) 100%);
     color: var(--accent);
     font-size: 9px;
     font-weight: 600;
     border-radius: var(--radius-full);
     text-transform: uppercase;
+    box-shadow: 0 0 8px var(--accent-glow);
+    animation: pulse 3s ease-in-out infinite;
+}
+
+.model-selector-unload {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--fg-3);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    opacity: 0.6;
+}
+
+.model-selector-unload:hover {
+    background: var(--error-muted, rgba(239, 68, 68, 0.1));
+    border-color: var(--error);
+    color: var(--error);
+    opacity: 1;
+}
+
+.model-selector-unload svg {
+    width: 12px;
+    height: 12px;
 }
 
 .model-selector-arrow {
@@ -1091,6 +1255,15 @@
     text-transform: uppercase;
 }
 
+.model-dropdown-item.loaded {
+    background: var(--accent-muted);
+    border-left: 2px solid var(--accent);
+}
+
+.model-dropdown-item.loaded:hover {
+    background: var(--bg-2);
+}
+
 .model-dropdown-divider {
     height: 1px;
     background: var(--border);
@@ -1115,6 +1288,7 @@
     border-radius: var(--radius-full);
     font-size: 12px;
     color: var(--fg-1);
+    transition: all var(--transition-base);
 }
 
 .status-dot {
@@ -1122,15 +1296,20 @@
     height: 8px;
     border-radius: 50%;
     background: var(--error);
+    box-shadow: 0 0 6px var(--error-glow);
+    transition: all var(--transition-base);
 }
 
 .status-dot.connected {
     background: var(--success);
+    box-shadow: 0 0 8px var(--success-glow), 0 0 16px var(--success-glow);
+    animation: pulse 2s ease-in-out infinite;
 }
 
 .status-dot.loading {
     background: var(--warning);
-    animation: pulse 1s infinite;
+    box-shadow: 0 0 8px var(--warning-glow);
+    animation: pulse 0.8s infinite;
 }
 
 /* ==================== SIDEBAR PANELS ==================== */
@@ -1577,7 +1756,7 @@
     transform: translateX(-50%) translateY(20px);
     padding: var(--space-3) var(--space-5);
     background: var(--bg-3);
-    border: 1px solid var(--border);
+    border: 1px solid var(--accent-border);
     border-radius: var(--radius-md);
     font-size: 13px;
     color: var(--fg-0);
@@ -1585,6 +1764,7 @@
     pointer-events: none;
     transition: all var(--transition-base);
     z-index: var(--z-toast);
+    box-shadow: var(--shadow-lg), 0 0 20px var(--accent-glow);
 }
 
 .toast.show {

@@ -8,6 +8,7 @@ and newer versions of mlx-lm.
 import json
 import hashlib
 import re
+import fnmatch
 from pathlib import Path
 
 # Model aliases - loaded from config file
@@ -33,6 +34,13 @@ def load_aliases():
         except Exception:
             pass
     return _MODEL_ALIASES
+
+
+def reload_aliases():
+    """Force reload of aliases configuration (called from routers)."""
+    global _MODEL_ALIASES
+    _MODEL_ALIASES = {}
+    return load_aliases()
 
 
 def load_routing_config():
@@ -76,19 +84,34 @@ def _detect_claude_tier(model_id: str) -> str:
 
 
 def resolve_alias(model_id: str) -> str:
-    """Resolve a model alias to its full path, with Claude routing support."""
+    """Resolve a model alias to its full path, with Claude routing and wildcard support.
+
+    Supports wildcards using fnmatch patterns:
+    - claude-haiku-* matches claude-haiku-4-5-20251001, claude-haiku-3, etc.
+    - claude-* matches any claude model
+    - qwen* matches qwen3, qwen2.5, etc.
+    """
     if not _MODEL_ALIASES:
         load_aliases()
     if not _ROUTING_CONFIG:
         load_routing_config()
 
-    # Direct alias match (highest priority)
+    # 1. Direct alias match (highest priority - exact match)
     if model_id in _MODEL_ALIASES:
         resolved = _MODEL_ALIASES[model_id]
         print(f"[patches] Resolved alias '{model_id}' -> '{resolved}'")
         return resolved
 
-    # Claude model routing
+    # 2. Wildcard pattern matching in aliases
+    # Check each alias key to see if it's a pattern that matches model_id
+    for pattern, target in _MODEL_ALIASES.items():
+        # Only check patterns that contain wildcards
+        if '*' in pattern or '?' in pattern:
+            if fnmatch.fnmatch(model_id, pattern):
+                print(f"[patches] Resolved wildcard alias '{pattern}' for '{model_id}' -> '{target}'")
+                return target
+
+    # 3. Claude model routing (for claude-* models not matched by aliases)
     if model_id.startswith("claude-"):
         routing_enabled = _ROUTING_CONFIG.get("enabled", True)
 

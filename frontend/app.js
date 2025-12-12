@@ -17,13 +17,47 @@ import { CommandPalette } from './components/CommandPalette.js';
 import { NetworkModal } from './components/NetworkModal.js';
 import { ModelComparator } from './components/ModelComparator.js';
 
+// Offline screen component
+function OfflineScreen() {
+    const retry = () => {
+        window.location.reload();
+    };
+
+    return html`
+        <div class="offline-screen">
+            <div class="offline-content">
+                <div class="offline-icon">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M1 1l22 22M9 9a3 3 0 1 0 4.243 4.243M6.343 6.343A8 8 0 1 0 17.657 17.657"/>
+                        <path d="M12 20h.01"/>
+                    </svg>
+                </div>
+                <h1>Server Offline</h1>
+                <p>Cannot connect to MLX Studio server at localhost:1234</p>
+                <div class="offline-instructions">
+                    <p>Start the server with:</p>
+                    <code>make server</code>
+                </div>
+                <button class="btn btn-primary" onClick=${retry}>
+                    Retry Connection
+                </button>
+            </div>
+        </div>
+    `;
+}
+
 export function App() {
+    const { connected } = useStore(s => ({ connected: s.connected }));
+
     // Initialize theme and load models on mount
     useEffect(() => {
         initTheme();
         initCrossTabSync();
         loadModels();
-        const interval = setInterval(loadModels, 30000);
+        // Refresh models list every 30s (not for connection check, just model list)
+        const interval = setInterval(() => {
+            if (getStore().connected) loadModels();
+        }, 30000);
 
         actions.addLog('info', 'Interface initialized');
 
@@ -38,6 +72,11 @@ export function App() {
             logStream.close();
         };
     }, []);
+
+    // Show offline screen if not connected
+    if (connected === false) {
+        return html`<${OfflineScreen} />`;
+    }
 
     // Keyboard shortcuts
     useEffect(() => {
