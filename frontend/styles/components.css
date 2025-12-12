@@ -1580,7 +1580,7 @@
 /* ==================== SIDEBAR PANELS ==================== */
 .panel {
     position: fixed;
-    top: 44px;
+    top: 65px;
     bottom: 0;
     width: 320px;
     background: var(--bg-1);
