@@ -3,6 +3,7 @@ const { html, useState, useEffect } = window.preact;
 import { showToast } from '../../hooks/useStore.js';
 import { endpoints } from '../../utils/api.js';
 import { InfoHint } from '../ui/Tooltip.js';
+import { PlusIcon, TrashIcon, GlobeIcon, CheckIcon, XIcon } from '../Icons.js';
 
 const TIER_INFO = {
     haiku: {
@@ -32,7 +33,12 @@ export function RoutingTab() {
     const [config, setConfig] = useState(null);
     const [localModels, setLocalModels] = useState([]);
     const [remotes, setRemotes] = useState([]);
+    const [remoteModels, setRemoteModels] = useState({}); // { remoteName: [models] }
+    const [remoteHealth, setRemoteHealth] = useState({}); // { remoteName: 'online'|'offline'|'checking' }
     const [loading, setLoading] = useState(true);
+    const [newRemoteName, setNewRemoteName] = useState('');
+    const [newRemoteUrl, setNewRemoteUrl] = useState('');
+    const [addingRemote, setAddingRemote] = useState(false);
 
     useEffect(() => {
         loadData();
@@ -51,7 +57,13 @@ export function RoutingTab() {
             // Try to load remotes if available
             try {
                 const remotesRes = await endpoints.remotes?.() || { remotes: [] };
-                setRemotes(remotesRes.remotes || []);
+                const remotesList = remotesRes.remotes || [];
+                setRemotes(remotesList);
+
+                // Check health of each remote
+                for (const remote of remotesList) {
+                    checkRemoteHealth(remote.name);
+                }
             } catch {
                 setRemotes([]);
             }
@@ -59,6 +71,52 @@ export function RoutingTab() {
             console.error('Failed to load routing config:', e);
         }
         setLoading(false);
+    };
+
+    const checkRemoteHealth = async (name) => {
+        setRemoteHealth(prev => ({ ...prev, [name]: 'checking' }));
+        try {
+            const result = await endpoints.remoteHealth(name);
+            setRemoteHealth(prev => ({ ...prev, [name]: result.status }));
+
+            // If online, fetch models
+            if (result.status === 'online') {
+                const modelsRes = await endpoints.remoteModels(name);
+                setRemoteModels(prev => ({ ...prev, [name]: modelsRes.models || [] }));
+            }
+        } catch {
+            setRemoteHealth(prev => ({ ...prev, [name]: 'offline' }));
+        }
+    };
+
+    const handleAddRemote = async () => {
+        if (!newRemoteName.trim() || !newRemoteUrl.trim()) {
+            showToast('Name and URL are required');
+            return;
+        }
+
+        try {
+            await endpoints.addRemote(newRemoteName.trim(), newRemoteUrl.trim());
+            showToast(`Added remote: ${newRemoteName}`);
+            setNewRemoteName('');
+            setNewRemoteUrl('');
+            setAddingRemote(false);
+            loadData();
+        } catch (e) {
+            showToast('Failed to add remote');
+        }
+    };
+
+    const handleDeleteRemote = async (name) => {
+        if (!confirm(`Delete remote "${name}"?`)) return;
+
+        try {
+            await endpoints.deleteRemote(name);
+            showToast(`Deleted remote: ${name}`);
+            loadData();
+        } catch (e) {
+            showToast('Failed to delete remote');
+        }
     };
 
     const handleTierChange = async (tier, field, value) => {
@@ -172,17 +230,22 @@ export function RoutingTab() {
                                         <label>Source</label>
                                         <select
                                             class="tier-select"
-                                            value=${config.tiers[tier]?.remote ? 'remote' : 'local'}
+                                            value=${config.tiers[tier]?.remote || 'local'}
                                             onChange=${e => {
-                                                if (e.target.value === 'local') {
+                                                const value = e.target.value;
+                                                if (value === 'local') {
                                                     handleTierChange(tier, 'remote', null);
+                                                } else {
+                                                    handleTierChange(tier, 'remote', value);
+                                                    // Clear local model when switching to remote
+                                                    handleTierChange(tier, 'model', null);
                                                 }
                                             }}
                                         >
                                             <option value="local">Local</option>
                                             ${remotes.map(r => html`
-                                                <option key=${r.name} value="remote:${r.name}">
-                                                    ${r.name} (${r.url})
+                                                <option key=${r.name} value=${r.name}>
+                                                    ${r.name} ${remoteHealth[r.name] === 'online' ? '●' : remoteHealth[r.name] === 'checking' ? '○' : '○'}
                                                 </option>
                                             `)}
                                         </select>
@@ -197,33 +260,42 @@ export function RoutingTab() {
                                             onChange=${e => handleTierChange(tier, 'model', e.target.value)}
                                         >
                                             <option value="">Not configured</option>
-                                            ${localModels.map(m => html`
-                                                <option key=${m.id} value=${m.path || m.id}>
-                                                    ${getShortName(m.id)}
-                                                </option>
-                                            `)}
+                                            ${config.tiers[tier]?.remote
+                                                ? (remoteModels[config.tiers[tier].remote] || []).map(m => html`
+                                                    <option key=${m.id} value=${m.id}>
+                                                        ${getShortName(m.id)}
+                                                    </option>
+                                                `)
+                                                : localModels.map(m => html`
+                                                    <option key=${m.id} value=${m.path || m.id}>
+                                                        ${getShortName(m.id)}
+                                                    </option>
+                                                `)
+                                            }
                                         </select>
                                     </div>
 
-                                    <!-- Draft Model (for speculative decoding) -->
-                                    <div class="tier-field">
-                                        <label>
-                                            Draft Model
-                                            <${InfoHint} text="Smaller model for speculative decoding. Speeds up generation by predicting tokens ahead." />
-                                        </label>
-                                        <select
-                                            class="tier-select"
-                                            value=${config.tiers[tier]?.draft_model || ''}
-                                            onChange=${e => handleTierChange(tier, 'draft_model', e.target.value)}
-                                        >
-                                            <option value="">None</option>
-                                            ${localModels.map(m => html`
-                                                <option key=${m.id} value=${m.path || m.id}>
-                                                    ${getShortName(m.id)}
-                                                </option>
-                                            `)}
-                                        </select>
-                                    </div>
+                                    <!-- Draft Model (only for local) -->
+                                    ${!config.tiers[tier]?.remote && html`
+                                        <div class="tier-field">
+                                            <label>
+                                                Draft Model
+                                                <${InfoHint} text="Smaller model for speculative decoding. Speeds up generation by predicting tokens ahead." />
+                                            </label>
+                                            <select
+                                                class="tier-select"
+                                                value=${config.tiers[tier]?.draft_model || ''}
+                                                onChange=${e => handleTierChange(tier, 'draft_model', e.target.value)}
+                                            >
+                                                <option value="">None</option>
+                                                ${localModels.map(m => html`
+                                                    <option key=${m.id} value=${m.path || m.id}>
+                                                        ${getShortName(m.id)}
+                                                    </option>
+                                                `)}
+                                            </select>
+                                        </div>
+                                    `}
                                 </div>
 
                                 ${config.tiers[tier]?.model && html`
@@ -257,6 +329,99 @@ export function RoutingTab() {
                     </select>
                 </section>
             `}
+
+            <!-- Remote Instances -->
+            <section class="settings-card">
+                <div class="settings-card-header-row">
+                    <div>
+                        <h3 class="settings-card-title">
+                            <${GlobeIcon} size=${16} />
+                            Remote Instances
+                        </h3>
+                        <p class="settings-card-desc">
+                            Connect to MLX Studio instances running on other machines
+                        </p>
+                    </div>
+                    <button
+                        class="btn btn-sm btn-primary"
+                        onClick=${() => setAddingRemote(true)}
+                    >
+                        <${PlusIcon} size=${14} />
+                        Add Remote
+                    </button>
+                </div>
+
+                ${addingRemote && html`
+                    <div class="remote-add-form">
+                        <div class="remote-add-fields">
+                            <input
+                                type="text"
+                                class="input-field"
+                                placeholder="Name (e.g., mac-studio)"
+                                value=${newRemoteName}
+                                onInput=${e => setNewRemoteName(e.target.value)}
+                            />
+                            <input
+                                type="text"
+                                class="input-field"
+                                placeholder="URL (e.g., http://192.168.1.100:1234)"
+                                value=${newRemoteUrl}
+                                onInput=${e => setNewRemoteUrl(e.target.value)}
+                            />
+                        </div>
+                        <div class="remote-add-actions">
+                            <button class="btn btn-sm btn-ghost" onClick=${() => setAddingRemote(false)}>
+                                Cancel
+                            </button>
+                            <button class="btn btn-sm btn-primary" onClick=${handleAddRemote}>
+                                Add
+                            </button>
+                        </div>
+                    </div>
+                `}
+
+                ${remotes.length === 0 && !addingRemote && html`
+                    <div class="empty-remotes">
+                        <${GlobeIcon} size=${24} />
+                        <p>No remote instances configured</p>
+                        <p class="hint">Add a remote to route requests to other machines</p>
+                    </div>
+                `}
+
+                ${remotes.length > 0 && html`
+                    <div class="remotes-list">
+                        ${remotes.map(r => html`
+                            <div key=${r.name} class="remote-item">
+                                <div class="remote-status ${remoteHealth[r.name] || 'unknown'}">
+                                    ${remoteHealth[r.name] === 'online' ? html`<${CheckIcon} size=${12} />` :
+                                      remoteHealth[r.name] === 'checking' ? html`<span class="spinner-sm"></span>` :
+                                      html`<${XIcon} size=${12} />`}
+                                </div>
+                                <div class="remote-info">
+                                    <span class="remote-name">${r.name}</span>
+                                    <span class="remote-url">${r.url}</span>
+                                </div>
+                                <div class="remote-actions">
+                                    <button
+                                        class="btn btn-icon btn-sm"
+                                        onClick=${() => checkRemoteHealth(r.name)}
+                                        title="Check connection"
+                                    >
+                                        <${GlobeIcon} size=${14} />
+                                    </button>
+                                    <button
+                                        class="btn btn-icon btn-sm btn-danger"
+                                        onClick=${() => handleDeleteRemote(r.name)}
+                                        title="Delete"
+                                    >
+                                        <${TrashIcon} size=${14} />
+                                    </button>
+                                </div>
+                            </div>
+                        `)}
+                    </div>
+                `}
+            </section>
         </div>
     `;
 }

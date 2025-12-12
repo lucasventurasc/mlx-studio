@@ -97,9 +97,9 @@
     --z-modal: 1000;
     --z-toast: 2000;
 
-    /* Code block colors (dark) */
-    --code-bg: #0d1117;
-    --code-header-bg: #161b22;
+    /* Code block colors (dark - GitHub dark style) */
+    --code-bg: #161b22;
+    --code-header-bg: #21262d;
 }
 
 /* ==================== LIGHT MODE ==================== */
@@ -171,9 +171,9 @@
     --shadow-lg: 0 8px 24px rgba(30, 50, 80, 0.1);
     --shadow-xl: 0 16px 48px rgba(30, 50, 80, 0.12);
 
-    /* Code block colors */
-    --code-bg: #f0f4f8;
-    --code-header-bg: #e4ebf2;
+    /* Code block colors (light - GitHub light style) */
+    --code-bg: #f6f8fa;
+    --code-header-bg: #eef2f5;
 }
 
 /* Prefer system color scheme - inherits from [data-theme="light"] */
@@ -246,9 +246,9 @@
         --shadow-lg: 0 8px 24px rgba(30, 50, 80, 0.1);
         --shadow-xl: 0 16px 48px rgba(30, 50, 80, 0.12);
 
-        /* Code block colors */
-        --code-bg: #f0f4f8;
-        --code-header-bg: #e4ebf2;
+        /* Code block colors (light - GitHub light style) */
+        --code-bg: #f6f8fa;
+        --code-header-bg: #eef2f5;
     }
 }
 

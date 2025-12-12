@@ -2,7 +2,7 @@
 const { html, useState, useRef, useEffect, useCallback } = window.preact;
 import { useStore, actions, showToast, getStore } from '../hooks/useStore.js';
 import { endpoints } from '../utils/api.js';
-import { SendIcon, ZapIcon, CheckIcon } from './Icons.js';
+import { SendIcon, ZapIcon, StopIcon } from './Icons.js';
 
 export function ChatInput() {
     const { currentModel, isGenerating, settings, currentChatId, chats, currentProfile } = useStore(s => ({
@@ -18,6 +18,7 @@ export function ChatInput() {
     const [stats, setStats] = useState(null);
     const [liveStats, setLiveStats] = useState(null); // Real-time during generation
     const textareaRef = useRef(null);
+    const abortControllerRef = useRef(null); // For cancelling streaming
 
     // Auto-resize textarea
     useEffect(() => {
@@ -26,6 +27,28 @@ export function ChatInput() {
             textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + 'px';
         }
     }, [value]);
+
+    // Cancel streaming
+    const handleCancel = useCallback(() => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+            abortControllerRef.current = null;
+            actions.addLog('info', 'Generation cancelled by user');
+            showToast('Generation cancelled');
+        }
+    }, []);
+
+    // Global Esc key listener to cancel generation
+    useEffect(() => {
+        const handleGlobalKeyDown = (e) => {
+            if (e.key === 'Escape' && isGenerating) {
+                e.preventDefault();
+                handleCancel();
+            }
+        };
+        document.addEventListener('keydown', handleGlobalKeyDown);
+        return () => document.removeEventListener('keydown', handleGlobalKeyDown);
+    }, [isGenerating, handleCancel]);
 
     const handleSend = useCallback(async () => {
         const content = value.trim();
@@ -36,6 +59,9 @@ export function ChatInput() {
             actions.addLog('warn', 'Attempted to send message without model');
             return;
         }
+
+        // Create abort controller for this request
+        abortControllerRef.current = new AbortController();
 
         setValue('');
         setStats(null);
@@ -56,6 +82,7 @@ export function ChatInput() {
         const startTime = Date.now();
         let responseText = '';
         let finalStats = { tokens: 0, tps: 0, cache_hit: false };
+        let wasCancelled = false;
 
         try {
             const store = getStore();
@@ -116,7 +143,9 @@ export function ChatInput() {
                 (stats) => {
                     setLiveStats({ ...stats, processing: false });
                     finalStats = stats;
-                });
+                },
+                // AbortSignal
+                abortControllerRef.current.signal);
             } else {
                 const requestBody = {
                     model: modelPath,
@@ -154,21 +183,44 @@ export function ChatInput() {
             actions.addLog('info', `Response: ${finalStats.tokens} tokens in ${elapsed.toFixed(1)}s (${finalStats.tps.toFixed(1)} tok/s)${finalStats.cache_hit ? ' [cache hit]' : ''}`);
 
         } catch (error) {
-            actions.addLog('error', `Generation error: ${error.message}`);
-            actions.updateLastMessage(`Error: ${error.message}\n\nMake sure the server is running.`);
+            // Check if cancelled
+            if (error.name === 'AbortError') {
+                wasCancelled = true;
+                // Keep partial response if any
+                if (responseText) {
+                    actions.updateLastMessage(responseText + '\n\n*[Generation cancelled]*');
+                }
+                const elapsed = (Date.now() - startTime) / 1000;
+                setStats({
+                    tokens: finalStats.tokens || liveStats?.tokens || 0,
+                    time: elapsed.toFixed(1),
+                    tps: (finalStats.tps || liveStats?.tps || 0).toFixed?.(1) || '0',
+                    cache_hit: false,
+                    cancelled: true
+                });
+            } else {
+                actions.addLog('error', `Generation error: ${error.message}`);
+                actions.updateLastMessage(`Error: ${error.message}\n\nMake sure the server is running.`);
+            }
             setLiveStats(null);
         }
 
+        abortControllerRef.current = null;
         actions.setIsGenerating(false);
         textareaRef.current?.focus();
-    }, [value, currentModel, isGenerating, settings, currentChatId, chats, currentProfile]);
+    }, [value, currentModel, isGenerating, settings, currentChatId, chats, currentProfile, liveStats]);
 
     const handleKeyDown = useCallback((e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             handleSend();
         }
-    }, [handleSend]);
+        // Esc cancels generation
+        if (e.key === 'Escape' && isGenerating) {
+            e.preventDefault();
+            handleCancel();
+        }
+    }, [handleSend, handleCancel, isGenerating]);
 
     const disabled = isGenerating || !currentModel;
     const displayStats = liveStats || stats;
@@ -222,17 +274,24 @@ export function ChatInput() {
                                     </div>
                                 `}
                                 <div class="chat-input-actions">
-                                    <button
-                                        class="chat-input-send"
-                                        onClick=${handleSend}
-                                        disabled=${disabled || !value.trim()}
-                                        title="Send message"
-                                    >
-                                        ${isGenerating
-                                            ? html`<span class="loading-spinner"></span>`
-                                            : html`<${SendIcon} size=${18} />`
-                                        }
-                                    </button>
+                                    ${isGenerating ? html`
+                                        <button
+                                            class="chat-input-stop"
+                                            onClick=${handleCancel}
+                                            title="Stop generation (Esc)"
+                                        >
+                                            <${StopIcon} size=${18} />
+                                        </button>
+                                    ` : html`
+                                        <button
+                                            class="chat-input-send"
+                                            onClick=${handleSend}
+                                            disabled=${!currentModel || !value.trim()}
+                                            title="Send message"
+                                        >
+                                            <${SendIcon} size=${18} />
+                                        </button>
+                                    `}
                                 </div>
                             </div>
                         </div>

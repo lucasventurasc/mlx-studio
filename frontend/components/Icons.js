@@ -167,6 +167,13 @@ export const XIcon = ({ size, className }) => html`
     <//>
 `;
 
+// Stop/Square icon (for cancel streaming)
+export const StopIcon = ({ size, className }) => html`
+    <${Icon} size=${size} className=${className}>
+        <rect x="6" y="6" width="12" height="12" rx="1"/>
+    <//>
+`;
+
 // Sparkles icon (for AI)
 export const SparklesIcon = ({ size, className }) => html`
     <${Icon} size=${size} className=${className}>

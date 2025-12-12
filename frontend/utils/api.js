@@ -32,12 +32,18 @@ export const api = {
 
     /**
      * Stream API with stats callback (OpenAI format)
+     * @param {string} endpoint - API endpoint
+     * @param {object} data - Request body
+     * @param {function} onChunk - Called with each text chunk
+     * @param {function} onStats - Called with stats updates
+     * @param {AbortSignal} signal - Optional AbortSignal for cancellation
      */
-    async stream(endpoint, data, onChunk, onStats) {
+    async stream(endpoint, data, onChunk, onStats, signal) {
         const response = await fetch(`${API_BASE}${endpoint}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...data, stream: true })
+            body: JSON.stringify({ ...data, stream: true }),
+            signal
         });
 
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -45,6 +51,19 @@ export const api = {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
+
+        // Handle abort
+        if (signal) {
+            signal.addEventListener('abort', () => {
+                reader.cancel();
+            });
+        }
+
+        // Real-time stats tracking (like LM Studio)
+        let tokenCount = 0;
+        let startTime = null;
+        let lastStatsUpdate = 0;
+        const STATS_UPDATE_INTERVAL = 100; // Update stats every 100ms
 
         while (true) {
             const { done, value } = await reader.read();
@@ -56,33 +75,61 @@ export const api = {
 
             for (const line of lines) {
                 if (!line.startsWith('data: ')) continue;
-                const data = line.slice(6).trim();
-                if (data === '[DONE]') continue;
+                const lineData = line.slice(6).trim();
+                if (lineData === '[DONE]') continue;
 
                 try {
-                    const json = JSON.parse(data);
+                    const json = JSON.parse(lineData);
 
                     if (json.error) {
                         throw new Error(json.error.message || 'Generation error');
                     }
 
-                    // Handle content delta
+                    // Handle content delta - count tokens for real-time tps
                     const delta = json.choices?.[0]?.delta?.content;
-                    if (delta && onChunk) onChunk(delta);
+                    if (delta) {
+                        if (onChunk) onChunk(delta);
 
-                    // Handle usage stats (mlx-omni-server includes these)
-                    if (json.usage && onStats) {
-                        onStats({
-                            tokens: json.usage.completion_tokens || 0,
-                            tps: json.usage.tokens_per_second || json.usage.generation_tps || 0,
-                            cache_hit: json.usage.cache_hit || false
-                        });
+                        // Start timing on first token
+                        if (!startTime) {
+                            startTime = performance.now();
+                        }
+
+                        // Count tokens (rough estimate: ~4 chars per token, or count chunks)
+                        tokenCount++;
+
+                        // Update stats periodically for real-time tps display
+                        const now = performance.now();
+                        if (onStats && now - lastStatsUpdate > STATS_UPDATE_INTERVAL) {
+                            const elapsedSeconds = (now - startTime) / 1000;
+                            const realTimeTps = elapsedSeconds > 0 ? tokenCount / elapsedSeconds : 0;
+                            onStats({
+                                tokens: tokenCount,
+                                tps: realTimeTps,
+                                cache_hit: false,
+                                live: true  // Mark as live stats (not final)
+                            });
+                            lastStatsUpdate = now;
+                        }
                     }
 
-                    // Check for finish
+                    // Handle final usage stats from server (more accurate)
+                    if (json.usage && onStats) {
+                        onStats({
+                            tokens: json.usage.completion_tokens || tokenCount,
+                            tps: json.usage.tokens_per_second || json.usage.generation_tps || 0,
+                            cache_hit: json.usage.prompt_tokens_details?.cached_tokens > 0 || false,
+                            live: false  // Final stats from server
+                        });
+                        // Usage chunk is the final chunk - we're done
+                        return;
+                    }
+
+                    // Check for finish (but don't exit yet - wait for usage chunk)
                     const finishReason = json.choices?.[0]?.finish_reason;
                     if (finishReason === 'stop' || finishReason === 'tool_calls') {
-                        return;
+                        // Don't return here - wait for usage chunk
+                        // Just continue processing
                     }
                 } catch (e) {
                     if (e.message !== 'Generation error') {
@@ -92,6 +139,18 @@ export const api = {
                     }
                 }
             }
+        }
+
+        // If we finish without getting usage stats, send final calculated stats
+        if (onStats && tokenCount > 0 && startTime) {
+            const elapsedSeconds = (performance.now() - startTime) / 1000;
+            const calculatedTps = elapsedSeconds > 0 ? tokenCount / elapsedSeconds : 0;
+            onStats({
+                tokens: tokenCount,
+                tps: calculatedTps,
+                cache_hit: false,
+                live: false
+            });
         }
     }
 };
@@ -107,7 +166,7 @@ export const endpoints = {
 
     // Chat completions (mlx-omni-server)
     chat: (data) => api.post('/v1/chat/completions', data),
-    chatStream: (data, onChunk, onStats) => api.stream('/v1/chat/completions', data, onChunk, onStats),
+    chatStream: (data, onChunk, onStats, signal) => api.stream('/v1/chat/completions', data, onChunk, onStats, signal),
 
     // Health check
     health: () => api.get('/health'),

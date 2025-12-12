@@ -96,35 +96,94 @@ export function renderMarkdown(text) {
         return content; // Just extract the content, it will be processed below
     });
 
+    // Extract code blocks first to protect them from other processing
+    const codeBlocks = [];
+    text = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (match, lang, code) => {
+        const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
+        codeBlocks.push({ lang, code: code.trim() });
+        return placeholder;
+    });
+
     let html = escapeHtml(text);
 
-    // Code blocks with syntax highlighting
-    html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
+    // Restore code blocks with syntax highlighting
+    html = html.replace(/__CODE_BLOCK_(\d+)__/g, (match, index) => {
+        const { lang, code } = codeBlocks[parseInt(index)];
         const langLabel = lang ? `<span class="code-lang">${lang}</span>` : '';
         let highlightedCode;
         try {
             if (lang && window.hljs?.getLanguage(lang)) {
-                highlightedCode = window.hljs.highlight(code.trim(), { language: lang }).value;
+                highlightedCode = window.hljs.highlight(code, { language: lang }).value;
             } else {
-                highlightedCode = window.hljs?.highlightAuto(code.trim()).value || escapeHtml(code.trim());
+                highlightedCode = window.hljs?.highlightAuto(code).value || escapeHtml(code);
             }
         } catch (e) {
-            highlightedCode = escapeHtml(code.trim());
+            highlightedCode = escapeHtml(code);
         }
         return `<div class="code-block"><div class="code-header">${langLabel}<button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').textContent)">Copy</button></div><code class="hljs">${highlightedCode}</code></div>`;
     });
 
-    // Inline code
+    // Headings (must be at start of line)
+    html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
+    html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+    html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+    html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+
+    // Horizontal rules
+    html = html.replace(/^---+$/gm, '<hr>');
+    html = html.replace(/^\*\*\*+$/gm, '<hr>');
+
+    // Unordered lists (- or *)
+    // Process list items to proper <li> tags within <ul>
+    html = html.replace(/(?:^|\n)((?:[-*] .+\n?)+)/gm, (match, listContent) => {
+        const items = listContent.trim().split('\n').map(item => {
+            const text = item.replace(/^[-*] /, '').trim();
+            return `<li>${text}</li>`;
+        }).join('');
+        return `\n<ul>${items}</ul>\n`;
+    });
+
+    // Numbered lists
+    html = html.replace(/(?:^|\n)((?:\d+\. .+\n?)+)/gm, (match, listContent) => {
+        const items = listContent.trim().split('\n').map(item => {
+            const text = item.replace(/^\d+\. /, '').trim();
+            return `<li>${text}</li>`;
+        }).join('');
+        return `\n<ol>${items}</ol>\n`;
+    });
+
+    // Inline code (after code blocks to avoid conflicts)
     html = html.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
 
-    // Bold
+    // Bold (using ** or __)
     html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/__([^_]+)__/g, '<strong>$1</strong>');
 
-    // Italic
-    html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    // Italic (using * or _) - be careful not to match ** or __
+    html = html.replace(/(?<!\*)\*(?!\*)([^*]+)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
+    html = html.replace(/(?<!_)_(?!_)([^_]+)(?<!_)_(?!_)/g, '<em>$1</em>');
 
-    // Links
+    // Strikethrough
+    html = html.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+
+    // Links [text](url)
     html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+    // Blockquotes (> at start of line)
+    html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+    // Merge consecutive blockquotes
+    html = html.replace(/<\/blockquote>\n<blockquote>/g, '\n');
+
+    // Convert newlines to <br> for paragraph breaks
+    // But not before or after block elements, and avoid double breaks
+    html = html.replace(/\n\n+/g, '<br><br>'); // Multiple newlines to double break
+    html = html.replace(/\n(?!<)/g, '<br>'); // Single newlines to single break
+
+    // Clean up extra breaks around block elements
+    html = html.replace(/<br>(<(?:ul|ol|h[1-6]|blockquote|hr|div))/g, '$1');
+    html = html.replace(/(<\/(?:ul|ol|h[1-6]|blockquote|div)>)<br>/g, '$1');
+    // Remove breaks at the very start
+    html = html.replace(/^<br>/, '');
 
     return html;
 }

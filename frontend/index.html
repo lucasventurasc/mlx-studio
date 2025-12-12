@@ -8,27 +8,84 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <!-- Highlight.js - loads both themes, CSS handles switching -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" id="hljs-dark">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" id="hljs-light" disabled>
+    <!-- Highlight.js core -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <link rel="stylesheet" href="styles/theme.css">
     <link rel="stylesheet" href="styles/components.css">
     <link rel="stylesheet" href="styles/settings-modal.css">
     <style>
-        /* Toggle highlight.js theme based on data-theme */
-        :root:not([data-theme="dark"]) #hljs-dark,
-        [data-theme="light"] #hljs-dark { display: none; }
-        :root:not([data-theme="dark"]) #hljs-light,
-        [data-theme="light"] #hljs-light { display: block; }
+        /* Custom syntax highlighting that works in both themes */
+        .hljs {
+            background: transparent !important;
+            color: var(--fg-0);
+        }
+        .hljs-keyword,
+        .hljs-selector-tag,
+        .hljs-built_in,
+        .hljs-name,
+        .hljs-tag { color: var(--hljs-keyword, #ff7b72); }
+        .hljs-string,
+        .hljs-title,
+        .hljs-section,
+        .hljs-attribute,
+        .hljs-literal,
+        .hljs-template-tag,
+        .hljs-template-variable,
+        .hljs-type,
+        .hljs-addition { color: var(--hljs-string, #a5d6ff); }
+        .hljs-comment,
+        .hljs-quote,
+        .hljs-deletion,
+        .hljs-meta { color: var(--hljs-comment, #8b949e); }
+        .hljs-number,
+        .hljs-regexp,
+        .hljs-selector-id,
+        .hljs-selector-class { color: var(--hljs-number, #79c0ff); }
+        .hljs-variable,
+        .hljs-template-variable,
+        .hljs-attr { color: var(--hljs-variable, #ffa657); }
+        .hljs-function,
+        .hljs-title.function_ { color: var(--hljs-function, #d2a8ff); }
+        .hljs-params { color: var(--fg-0); }
+        .hljs-class .hljs-title { color: var(--hljs-class, #ffa657); }
+        .hljs-symbol,
+        .hljs-bullet { color: var(--hljs-symbol, #f85149); }
 
-        [data-theme="dark"] #hljs-dark { display: block; }
-        [data-theme="dark"] #hljs-light { display: none; }
+        /* Dark theme (default) */
+        :root {
+            --hljs-keyword: #ff7b72;
+            --hljs-string: #a5d6ff;
+            --hljs-comment: #8b949e;
+            --hljs-number: #79c0ff;
+            --hljs-variable: #ffa657;
+            --hljs-function: #d2a8ff;
+            --hljs-class: #ffa657;
+            --hljs-symbol: #f85149;
+        }
 
-        /* System preference handling */
+        /* Light theme colors */
+        [data-theme="light"] {
+            --hljs-keyword: #cf222e;
+            --hljs-string: #0a3069;
+            --hljs-comment: #6e7781;
+            --hljs-number: #0550ae;
+            --hljs-variable: #953800;
+            --hljs-function: #8250df;
+            --hljs-class: #953800;
+            --hljs-symbol: #cf222e;
+        }
+
         @media (prefers-color-scheme: light) {
-            :root:not([data-theme]) #hljs-dark { display: none; }
-            :root:not([data-theme]) #hljs-light { display: block; }
+            :root:not([data-theme="dark"]) {
+                --hljs-keyword: #cf222e;
+                --hljs-string: #0a3069;
+                --hljs-comment: #6e7781;
+                --hljs-number: #0550ae;
+                --hljs-variable: #953800;
+                --hljs-function: #8250df;
+                --hljs-class: #953800;
+                --hljs-symbol: #cf222e;
+            }
         }
     </style>
 </head>

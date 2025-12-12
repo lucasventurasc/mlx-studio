@@ -13,13 +13,39 @@ export function ChatMessages() {
     }));
 
     const containerRef = useRef(null);
+    const userScrolledRef = useRef(false);
+    const lastScrollTopRef = useRef(0);
 
-    // Auto-scroll to bottom
+    // Track if user manually scrolled up
+    const handleScroll = () => {
+        if (!containerRef.current) return;
+        const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
+        const isAtBottom = scrollHeight - scrollTop - clientHeight < 50; // 50px threshold
+
+        // User scrolled up if scroll position decreased and not at bottom
+        if (scrollTop < lastScrollTopRef.current && !isAtBottom) {
+            userScrolledRef.current = true;
+        }
+        // User scrolled back to bottom - re-enable auto-scroll
+        if (isAtBottom) {
+            userScrolledRef.current = false;
+        }
+        lastScrollTopRef.current = scrollTop;
+    };
+
+    // Auto-scroll to bottom only if user hasn't scrolled up
     useEffect(() => {
-        if (containerRef.current) {
+        if (containerRef.current && !userScrolledRef.current) {
             containerRef.current.scrollTop = containerRef.current.scrollHeight;
         }
     }, [messages]);
+
+    // Reset scroll tracking when generation starts
+    useEffect(() => {
+        if (isGenerating) {
+            userScrolledRef.current = false;
+        }
+    }, [isGenerating]);
 
     // Show loading overlay when model is loading
     if (isLoadingModel) {
@@ -39,7 +65,7 @@ export function ChatMessages() {
     }
 
     return html`
-        <div class="chat-messages" ref=${containerRef}>
+        <div class="chat-messages" ref=${containerRef} onScroll=${handleScroll}>
             <div class="chat-messages-inner">
                 ${messages.map((msg, idx) => html`
                     <${Message}

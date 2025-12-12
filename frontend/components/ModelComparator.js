@@ -2,7 +2,8 @@
 const { html, useState, useCallback, useEffect, useRef } = window.preact;
 import { useStore, actions, showToast } from '../hooks/useStore.js';
 import { endpoints } from '../utils/api.js';
-import { XIcon, SendIcon, RefreshIcon } from './Icons.js';
+import { renderMarkdown } from '../utils/helpers.js';
+import { XIcon, SendIcon, RefreshIcon, ZapIcon } from './Icons.js';
 
 export function ModelComparator() {
     const { show, models, currentModel } = useStore(s => ({
@@ -16,15 +17,39 @@ export function ModelComparator() {
     const [modelB, setModelB] = useState(null);
     const [resultA, setResultA] = useState({ text: '', loading: false, stats: null });
     const [resultB, setResultB] = useState({ text: '', loading: false, stats: null });
+    const [loadedModels, setLoadedModels] = useState([]);
     const textareaRef = useRef(null);
 
-    // Initialize models when component opens
+    // Load list of loaded models when component opens
     useEffect(() => {
-        if (show && models.length >= 2) {
-            if (!modelA) setModelA(models[0]);
-            if (!modelB && models.length >= 2) setModelB(models[1]);
+        if (show) {
+            loadLoadedModels();
         }
-    }, [show, models]);
+    }, [show]);
+
+    const loadLoadedModels = async () => {
+        try {
+            const data = await endpoints.loadedModels();
+            const loaded = data.loaded || [];
+            // Map loaded model IDs to full model info from models list
+            const loadedWithInfo = loaded.map(l => {
+                const fullModel = models.find(m => m.path === l.model_id || m.id === l.model_id);
+                return fullModel || { id: l.model_id, name: l.model_id.split('/').pop(), path: l.model_id };
+            });
+            setLoadedModels(loadedWithInfo);
+
+            // Auto-select first two loaded models
+            if (loadedWithInfo.length >= 1 && !modelA) {
+                setModelA(loadedWithInfo[0]);
+            }
+            if (loadedWithInfo.length >= 2 && !modelB) {
+                setModelB(loadedWithInfo[1]);
+            }
+        } catch (e) {
+            console.warn('Failed to load loaded models:', e);
+            setLoadedModels([]);
+        }
+    };
 
     const runComparison = useCallback(async () => {
         if (!prompt.trim() || !modelA || !modelB) {
@@ -33,8 +58,8 @@ export function ModelComparator() {
         }
 
         // Reset results
-        setResultA({ text: '', loading: true, stats: null });
-        setResultB({ text: '', loading: true, stats: null });
+        setResultA({ text: '', loading: true, stats: { processing: true } });
+        setResultB({ text: '', loading: true, stats: { processing: true } });
 
         const messages = [{ role: 'user', content: prompt }];
 
@@ -42,27 +67,36 @@ export function ModelComparator() {
         const runModel = async (model, setResult) => {
             const startTime = Date.now();
             let fullText = '';
+            let firstChunk = true;
 
             try {
+                // Use model.path for local models
+                const modelPath = model.path || model.id;
+
                 await endpoints.chatStream({
-                    model: model.id,
+                    model: modelPath,
                     messages,
-                    max_tokens: 1024,
-                    stream: true
+                    max_tokens: 2048,
+                    temperature: 0.7,
+                    stream_options: { include_usage: true }
                 },
                 (delta) => {
+                    if (firstChunk) {
+                        firstChunk = false;
+                        setResult(r => ({ ...r, stats: { ...r.stats, processing: false } }));
+                    }
                     fullText += delta;
                     setResult(r => ({ ...r, text: fullText }));
                 },
                 (stats) => {
-                    setResult(r => ({ ...r, stats }));
+                    setResult(r => ({ ...r, stats: { ...stats, processing: false } }));
                 });
 
                 const elapsed = (Date.now() - startTime) / 1000;
                 setResult(r => ({
                     ...r,
                     loading: false,
-                    stats: { ...r.stats, time: elapsed.toFixed(1) }
+                    stats: { ...r.stats, time: elapsed.toFixed(1), processing: false }
                 }));
             } catch (error) {
                 setResult({
@@ -143,29 +177,39 @@ export function ModelComparator() {
                     <div class="comparator-model-select">
                         <label>Model A</label>
                         <select
-                            value=${modelA?.id || ''}
-                            onChange=${e => setModelA(models.find(m => m.id === e.target.value))}
+                            value=${modelA?.path || modelA?.id || ''}
+                            onChange=${e => setModelA(loadedModels.find(m => (m.path || m.id) === e.target.value))}
                             disabled=${isLoading}
                         >
                             <option value="">Select model...</option>
-                            ${models.map(m => html`
-                                <option key=${m.id} value=${m.id}>${m.name}</option>
+                            ${loadedModels.map(m => html`
+                                <option key=${m.path || m.id} value=${m.path || m.id}>${m.name}</option>
                             `)}
                         </select>
+                        ${loadedModels.length === 0 && html`
+                            <span class="hint-error">No models loaded</span>
+                        `}
                     </div>
                     <div class="comparator-model-select">
                         <label>Model B</label>
                         <select
-                            value=${modelB?.id || ''}
-                            onChange=${e => setModelB(models.find(m => m.id === e.target.value))}
+                            value=${modelB?.path || modelB?.id || ''}
+                            onChange=${e => setModelB(loadedModels.find(m => (m.path || m.id) === e.target.value))}
                             disabled=${isLoading}
                         >
                             <option value="">Select model...</option>
-                            ${models.map(m => html`
-                                <option key=${m.id} value=${m.id}>${m.name}</option>
+                            ${loadedModels.map(m => html`
+                                <option key=${m.path || m.id} value=${m.path || m.id}>${m.name}</option>
                             `)}
                         </select>
                     </div>
+                    <button
+                        class="btn btn-ghost btn-sm"
+                        onClick=${loadLoadedModels}
+                        title="Refresh loaded models list"
+                    >
+                        <${RefreshIcon} size=${14} />
+                    </button>
                 </div>
 
                 <div class="comparator-results">
@@ -184,29 +228,46 @@ export function ModelComparator() {
 }
 
 function CompareResult({ title, result }) {
+    const stats = result.stats;
+    const tpsDisplay = stats?.tps ? (typeof stats.tps === 'number' ? stats.tps.toFixed(1) : stats.tps) : '0';
+
     return html`
         <div class="compare-result">
             <div class="compare-result-header">
                 <span class="compare-result-title">${title}</span>
-                ${result.stats && html`
+                ${stats && html`
                     <div class="compare-result-stats">
-                        ${result.stats.tokens > 0 && html`
-                            <span>${result.stats.tokens} tok</span>
+                        ${stats.processing && html`
+                            <span class="stat-badge processing">
+                                <span class="processing-spinner"></span> processing
+                            </span>
                         `}
-                        ${result.stats.tps > 0 && html`
-                            <span>${result.stats.tps} tok/s</span>
+                        ${stats.cache_hit && !stats.processing && html`
+                            <span class="stat-badge cache-hit">
+                                <${ZapIcon} size=${10} /> cached
+                            </span>
                         `}
-                        ${result.stats.time && html`
-                            <span>${result.stats.time}s</span>
+                        ${!stats.processing && html`
+                            <span class="stat-item">
+                                <strong>${stats.tokens || 0}</strong> tokens
+                            </span>
+                            <span class="stat-item">
+                                <strong>${tpsDisplay}</strong> tok/s
+                            </span>
+                        `}
+                        ${stats.time && !stats.processing && html`
+                            <span class="stat-item">
+                                <strong>${stats.time}</strong>s
+                            </span>
                         `}
                     </div>
                 `}
             </div>
             <div class="compare-result-content">
-                ${result.loading
+                ${result.loading && (!result.text)
                     ? html`<div class="compare-loading"><span class="loading-spinner"></span> Generating...</div>`
                     : result.text
-                        ? html`<div class="compare-text">${result.text}</div>`
+                        ? html`<div class="compare-text" dangerouslySetInnerHTML=${{ __html: renderMarkdown(result.text) }}></div>`
                         : html`<div class="compare-empty">Output will appear here</div>`
                 }
             </div>
