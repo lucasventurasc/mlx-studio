@@ -31,11 +31,24 @@ export function InferenceTab() {
         currentProfile: s.currentProfile || 'balanced'
     }));
 
-    const updateSetting = useCallback((key, value) => {
+    const updateSetting = useCallback(async (key, value) => {
         actions.updateSettings({ [key]: value });
+
+        // Sync inference settings to server (affects Anthropic/Claude Code endpoint too)
+        const inferenceKeys = ['temperature', 'topP', 'topK', 'maxTokens'];
+        if (inferenceKeys.includes(key)) {
+            try {
+                // Map frontend key names to backend key names
+                const keyMap = { topP: 'top_p', topK: 'top_k', maxTokens: 'max_tokens' };
+                const serverKey = keyMap[key] || key;
+                await endpoints.updateInferenceSettings({ [serverKey]: value });
+            } catch (e) {
+                console.warn('Failed to sync setting to server:', e);
+            }
+        }
     }, []);
 
-    const loadPreset = useCallback((presetName) => {
+    const loadPreset = useCallback(async (presetName) => {
         const preset = presets[presetName];
         if (preset) {
             actions.updateSettings({
@@ -45,6 +58,17 @@ export function InferenceTab() {
                 repPenalty: preset.repPenalty,
                 maxTokens: preset.maxTokens
             });
+            // Sync to server
+            try {
+                await endpoints.updateInferenceSettings({
+                    temperature: preset.temperature,
+                    top_p: preset.topP,
+                    top_k: preset.topK,
+                    max_tokens: preset.maxTokens
+                });
+            } catch (e) {
+                console.warn('Failed to sync preset to server:', e);
+            }
         }
     }, []);
 

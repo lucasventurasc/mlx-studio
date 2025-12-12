@@ -179,6 +179,10 @@ export const endpoints = {
     profiles: () => api.get('/api/profiles'),
     setProfile: (profile) => api.post(`/api/profiles/${profile}`),
 
+    // Global inference settings (affects all endpoints including Anthropic/Claude Code)
+    inferenceSettings: () => api.get('/api/inference/settings'),
+    updateInferenceSettings: (settings) => api.post('/api/inference/settings', settings),
+
     // KV Cache management (extension)
     cacheStats: () => api.get('/api/cache/stats'),
     cacheClear: (includePersisted = false) =>

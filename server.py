@@ -75,6 +75,7 @@ from mlx_omni_server.chat.anthropic.router import router as anthropic_router
 
 # Import our extensions
 from extensions import KVCacheManager, InferenceProfiles, ModelManager
+from extensions.global_settings import get_global_settings
 
 logging.basicConfig(
     level=logging.INFO,
@@ -200,7 +201,45 @@ def get_profiles():
 @app.post("/api/profiles/{profile_name}")
 def set_profile(profile_name: str):
     """Set the current inference profile."""
-    return profiles.set_current(profile_name)
+    result = profiles.set_current(profile_name)
+    # Also update global settings to match the profile
+    profile = profiles.get(profile_name)
+    if profile:
+        get_global_settings().update(
+            temperature=profile.temperature,
+            top_p=profile.top_p,
+            max_tokens=profile.max_tokens
+        )
+    return result
+
+
+# =============================================================================
+# Global Inference Settings (affects all endpoints including Anthropic)
+# =============================================================================
+
+@app.get("/api/inference/settings")
+def get_inference_settings():
+    """Get global inference settings that affect all endpoints."""
+    return get_global_settings().settings.to_dict()
+
+
+class InferenceSettingsUpdate(BaseModel):
+    temperature: float = None
+    top_p: float = None
+    top_k: int = None
+    max_tokens: int = None
+
+
+@app.post("/api/inference/settings")
+def update_inference_settings(settings: InferenceSettingsUpdate):
+    """Update global inference settings. These affect both OpenAI and Anthropic endpoints."""
+    updated = get_global_settings().update(
+        temperature=settings.temperature,
+        top_p=settings.top_p,
+        top_k=settings.top_k,
+        max_tokens=settings.max_tokens
+    )
+    return {"status": "updated", "settings": updated.to_dict()}
 
 
 @app.get("/api/cache/stats")
