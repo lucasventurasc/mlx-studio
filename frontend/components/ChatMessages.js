@@ -90,10 +90,13 @@ function Message({ role, content, modelName, isLast, isGenerating }) {
                 </div>
                 <div class="message-bubble">
                     ${isGenerating && !content ? html`
-                        <div class="thinking-dots">
-                            <span></span>
-                            <span></span>
-                            <span></span>
+                        <div class="generating-indicator">
+                            <div class="thinking-dots">
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                            </div>
+                            <span class="generating-text">Processing prompt...</span>
                         </div>
                     ` : html`
                         <div class="message-text" dangerouslySetInnerHTML=${renderedContent}></div>

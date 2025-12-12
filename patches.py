@@ -7,11 +7,16 @@ and newer versions of mlx-lm.
 
 import json
 import hashlib
+import re
 from pathlib import Path
 
 # Model aliases - loaded from config file
 _MODEL_ALIASES = {}
 ALIASES_FILE = Path(__file__).parent / "model_aliases.json"
+
+# Claude model routing configuration
+_ROUTING_CONFIG = {}
+ROUTING_FILE = Path(__file__).parent / "claude_routing.json"
 
 # Learned system prompts cache
 _LEARNED_PROMPTS = {}
@@ -30,26 +35,102 @@ def load_aliases():
     return _MODEL_ALIASES
 
 
+def load_routing_config():
+    """Load Claude routing configuration."""
+    global _ROUTING_CONFIG
+    if ROUTING_FILE.exists():
+        try:
+            with open(ROUTING_FILE) as f:
+                _ROUTING_CONFIG = json.load(f)
+        except Exception:
+            pass
+    return _ROUTING_CONFIG
+
+
+def reload_routing_config():
+    """Force reload of routing configuration (called from server.py)."""
+    global _ROUTING_CONFIG
+    _ROUTING_CONFIG = {}
+    return load_routing_config()
+
+
+def _detect_claude_tier(model_id: str) -> str:
+    """Detect which tier (haiku/sonnet/opus) a Claude model ID belongs to."""
+    model_lower = model_id.lower()
+
+    # Check patterns from config first
+    if _ROUTING_CONFIG.get("patterns"):
+        for pattern, tier in _ROUTING_CONFIG["patterns"].items():
+            if re.match(pattern, model_id, re.IGNORECASE):
+                return tier
+
+    # Fallback to simple keyword matching
+    if "haiku" in model_lower:
+        return "haiku"
+    elif "opus" in model_lower:
+        return "opus"
+    elif "sonnet" in model_lower:
+        return "sonnet"
+
+    return "sonnet"  # Default to sonnet if unknown
+
+
 def resolve_alias(model_id: str) -> str:
-    """Resolve a model alias to its full path."""
+    """Resolve a model alias to its full path, with Claude routing support."""
     if not _MODEL_ALIASES:
         load_aliases()
+    if not _ROUTING_CONFIG:
+        load_routing_config()
 
-    # Direct alias match
+    # Direct alias match (highest priority)
     if model_id in _MODEL_ALIASES:
         resolved = _MODEL_ALIASES[model_id]
         print(f"[patches] Resolved alias '{model_id}' -> '{resolved}'")
         return resolved
 
-    # Pattern-based alias for Claude models -> redirect to default local model
+    # Claude model routing
     if model_id.startswith("claude-"):
-        # Use the default local model for any Claude model
-        default_model = _MODEL_ALIASES.get("qwen3-coder-30b") or _MODEL_ALIASES.get("qwen")
+        routing_enabled = _ROUTING_CONFIG.get("enabled", True)
+
+        if routing_enabled:
+            # Detect tier and get configured model
+            tier = _detect_claude_tier(model_id)
+            tier_config = _ROUTING_CONFIG.get("tiers", {}).get(tier, {})
+            tier_model = tier_config.get("model")
+
+            if tier_model:
+                print(f"[patches] Routed Claude '{model_id}' ({tier}) -> '{tier_model}'")
+                return tier_model
+
+        # Fallback to default_model from routing config
+        default_model = _ROUTING_CONFIG.get("default_model")
         if default_model:
-            print(f"[patches] Resolved Claude model '{model_id}' -> '{default_model}'")
+            print(f"[patches] Routed Claude '{model_id}' (default) -> '{default_model}'")
             return default_model
 
+        # Final fallback to aliases
+        fallback = _MODEL_ALIASES.get("qwen3-coder-30b") or _MODEL_ALIASES.get("qwen")
+        if fallback:
+            print(f"[patches] Resolved Claude model '{model_id}' -> '{fallback}' (fallback)")
+            return fallback
+
     return model_id
+
+
+def get_draft_model_for(model_id: str) -> str:
+    """Get the draft model configured for a model (for speculative decoding)."""
+    if not _ROUTING_CONFIG:
+        load_routing_config()
+
+    # Check if this is a Claude model with tier-specific draft model
+    if model_id.startswith("claude-"):
+        tier = _detect_claude_tier(model_id)
+        tier_config = _ROUTING_CONFIG.get("tiers", {}).get(tier, {})
+        draft_model = tier_config.get("draft_model")
+        if draft_model:
+            return draft_model
+
+    return None
 
 
 # =============================================================================
@@ -192,7 +273,7 @@ def _patch_mlx_lm_utils():
 
 def _patch_chat_generator():
     """
-    Patch ChatGenerator to resolve model aliases before loading.
+    Patch ChatGenerator to resolve model aliases and apply draft model for speculative decoding.
     """
     from mlx_omni_server.chat.mlx.chat_generator import ChatGenerator
 
@@ -200,8 +281,18 @@ def _patch_chat_generator():
 
     @classmethod
     def patched_get_or_create(cls, model_id: str, adapter_path=None, draft_model_id=None):
-        """Wrapper that resolves model aliases before loading."""
+        """Wrapper that resolves model aliases and applies draft model configuration."""
+        # Resolve main model alias
         resolved_model_id = resolve_alias(model_id)
+
+        # Check for configured draft model (speculative decoding)
+        if draft_model_id is None:
+            configured_draft = get_draft_model_for(model_id)
+            if configured_draft:
+                # Resolve draft model alias too
+                draft_model_id = resolve_alias(configured_draft)
+                print(f"[patches] Using draft model '{draft_model_id}' for speculative decoding")
+
         return original_get_or_create.__func__(cls, resolved_model_id, adapter_path, draft_model_id)
 
     ChatGenerator.get_or_create = patched_get_or_create

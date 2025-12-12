@@ -3,14 +3,14 @@ const { html, useEffect, useCallback } = window.preact;
 
 // Import store and actions
 import { useStore, actions, getStore, showToast, initTheme, initCrossTabSync } from './hooks/useStore.js';
-import { endpoints } from './utils/api.js';
+import { endpoints, createLogStream } from './utils/api.js';
 
 // Import components
 import { TopBar } from './components/TopBar.js';
 import { ChatMessages } from './components/ChatMessages.js';
 import { ChatInput } from './components/ChatInput.js';
 import { LogsPanel } from './components/LogsPanel.js';
-import { SettingsPanel } from './components/SettingsPanel.js';
+import { SettingsModal } from './components/SettingsModal.js';
 import { ChatsPanel } from './components/ChatsPanel.js';
 import { ModelBrowser } from './components/ModelBrowser.js';
 import { CommandPalette } from './components/CommandPalette.js';
@@ -27,7 +27,16 @@ export function App() {
 
         actions.addLog('info', 'Interface initialized');
 
-        return () => clearInterval(interval);
+        // Connect to server log stream
+        const logStream = createLogStream(
+            (log) => actions.addServerLog(log),
+            (error) => console.warn('Log stream error, will reconnect...', error)
+        );
+
+        return () => {
+            clearInterval(interval);
+            logStream.close();
+        };
     }, []);
 
     // Keyboard shortcuts
@@ -81,7 +90,7 @@ export function App() {
                 <${LogsPanel} />
             </main>
 
-            <${SettingsPanel} />
+            <${SettingsModal} />
             <${ChatsPanel} />
             <${ModelBrowser} />
             <${CommandPalette} />

@@ -312,10 +312,21 @@ export const actions = {
     setNetworkAddresses: (networkAddresses) => updateStore({ networkAddresses }),
 
     // Logs
-    addLog: (level, message) => {
+    addLog: (level, message, source = 'client') => {
         const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
         updateStore(s => ({
-            logs: [...s.logs.slice(-499), { timestamp, level, message }]
+            logs: [...s.logs.slice(-499), { timestamp, level, message, source }]
+        }));
+    },
+    addServerLog: (log) => {
+        // Add server log with 'server' source
+        updateStore(s => ({
+            logs: [...s.logs.slice(-499), {
+                timestamp: log.timestamp,
+                level: log.level,
+                message: `[${log.logger}] ${log.message}`,
+                source: 'server'
+            }]
         }));
     },
     clearLogs: () => updateStore({ logs: [] }),

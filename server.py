@@ -10,13 +10,45 @@ Combines mlx-omni-server backend with MLX Studio extensions:
 
 Usage:
     ./venv-omni/bin/python server.py --port 1234
+
+Environment Variables (Cache Configuration):
+    MLX_CACHE_BLOCK_SIZE   - Token block size for hashing (default: 256)
+    MLX_CACHE_MAX_SLOTS    - Maximum cache slots (default: 4)
+    MLX_CACHE_MIN_REUSE    - Minimum tokens to reuse cache (default: 512)
+    MLX_CACHE_MAX_TOKENS   - Maximum tokens per slot (default: 65536)
 """
 
+import os
 import sys
 import json
 import argparse
 import logging
+import asyncio
 from pathlib import Path
+from collections import deque
+from typing import Dict, Optional, AsyncGenerator
+
+# =============================================================================
+# Cache Configuration (set before importing mlx-omni-server)
+# =============================================================================
+
+# Default cache settings optimized for Claude Code workloads
+# These can be overridden via environment variables
+CACHE_DEFAULTS = {
+    # Prompt/KV cache settings
+    "MLX_CACHE_BLOCK_SIZE": "256",     # Tokens per block for hashing
+    "MLX_CACHE_MAX_SLOTS": "4",        # Number of cache slots
+    "MLX_CACHE_MIN_REUSE": "512",      # Min tokens to consider cache hit
+    "MLX_CACHE_MAX_TOKENS": "65536",   # Max tokens per slot (64K)
+    # Model cache settings
+    "MLX_MODEL_CACHE_SIZE": "3",       # Max models in memory
+    "MLX_MODEL_CACHE_TTL": "0",        # Model TTL in seconds (0=never expire)
+}
+
+# Apply defaults if not already set
+for key, default in CACHE_DEFAULTS.items():
+    if key not in os.environ:
+        os.environ[key] = default
 
 # Add vendor mlx-omni-server to path
 VENDOR_PATH = Path(__file__).parent / "vendor" / "mlx-omni-server" / "src"
@@ -30,7 +62,7 @@ import uvicorn
 from fastapi import FastAPI
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 # Import mlx-omni-server chat routers
@@ -45,6 +77,51 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("mlx-studio")
+
+# =============================================================================
+# Server Log Streaming (SSE)
+# =============================================================================
+
+# Store recent logs and connected clients
+_log_buffer: deque = deque(maxlen=100)  # Keep last 100 logs
+_log_clients: set = set()  # Connected SSE clients
+
+class WebLogHandler(logging.Handler):
+    """Custom log handler that broadcasts logs to SSE clients."""
+
+    def emit(self, record):
+        try:
+            log_entry = {
+                "timestamp": self.formatTime(record),
+                "level": record.levelname.lower(),
+                "logger": record.name,
+                "message": record.getMessage()
+            }
+            _log_buffer.append(log_entry)
+
+            # Broadcast to all connected clients
+            for queue in list(_log_clients):
+                try:
+                    queue.put_nowait(log_entry)
+                except:
+                    pass  # Queue full or closed
+        except Exception:
+            pass
+
+    def formatTime(self, record):
+        import time
+        ct = time.localtime(record.created)
+        return time.strftime("%H:%M:%S", ct)
+
+# Add web handler to root logger to capture all logs
+_web_handler = WebLogHandler()
+_web_handler.setLevel(logging.INFO)
+logging.getLogger().addHandler(_web_handler)
+
+# Also capture uvicorn and mlx logs
+for logger_name in ["uvicorn", "uvicorn.access", "uvicorn.error", "mlx_omni_server", "mlx-studio"]:
+    log = logging.getLogger(logger_name)
+    log.addHandler(_web_handler)
 
 # Initialize extensions
 kv_cache = KVCacheManager(max_slots=8)
@@ -156,6 +233,345 @@ def persist_cache_slot(slot_id: str):
 
 
 # =============================================================================
+# Prompt Cache Settings (SmartPromptCache for Anthropic/OpenAI)
+# =============================================================================
+
+class PromptCacheConfig(BaseModel):
+    block_size: int = 256
+    max_slots: int = 4
+    min_reuse_tokens: int = 512
+    max_cached_tokens: int = 65536
+
+
+@app.get("/api/prompt-cache/config")
+def get_prompt_cache_config():
+    """Get current prompt cache configuration."""
+    return {
+        "block_size": int(os.environ.get("MLX_CACHE_BLOCK_SIZE", "256")),
+        "max_slots": int(os.environ.get("MLX_CACHE_MAX_SLOTS", "4")),
+        "min_reuse_tokens": int(os.environ.get("MLX_CACHE_MIN_REUSE", "512")),
+        "max_cached_tokens": int(os.environ.get("MLX_CACHE_MAX_TOKENS", "65536")),
+    }
+
+
+@app.post("/api/prompt-cache/config")
+def set_prompt_cache_config(config: PromptCacheConfig):
+    """Update prompt cache configuration.
+
+    Note: Changes take effect on next cache creation (new model load).
+    To apply immediately, clear the cache after updating.
+    """
+    os.environ["MLX_CACHE_BLOCK_SIZE"] = str(config.block_size)
+    os.environ["MLX_CACHE_MAX_SLOTS"] = str(config.max_slots)
+    os.environ["MLX_CACHE_MIN_REUSE"] = str(config.min_reuse_tokens)
+    os.environ["MLX_CACHE_MAX_TOKENS"] = str(config.max_cached_tokens)
+
+    logger.info(f"Updated prompt cache config: {config}")
+    return {
+        "status": "updated",
+        "config": config.model_dump(),
+        "note": "Changes apply to new cache instances. Clear cache to apply immediately."
+    }
+
+
+@app.get("/api/prompt-cache/stats")
+def get_prompt_cache_stats():
+    """Get SmartPromptCache statistics from loaded models."""
+    from mlx_omni_server.chat.mlx.wrapper_cache import wrapper_cache
+
+    stats = {}
+    try:
+        # Get stats from all cached wrappers
+        for key, wrapper in wrapper_cache._cache.items():
+            if hasattr(wrapper, 'prompt_cache') and wrapper._prompt_cache is not None:
+                cache_stats = wrapper.prompt_cache.get_stats()
+                stats[key] = cache_stats
+    except Exception as e:
+        logger.warning(f"Failed to get prompt cache stats: {e}")
+
+    return {
+        "caches": stats,
+        "total_caches": len(stats),
+        "config": get_prompt_cache_config()
+    }
+
+
+@app.get("/api/prompt-cache/health")
+def get_prompt_cache_health():
+    """Get human-readable health report for prompt caches."""
+    from mlx_omni_server.chat.mlx.wrapper_cache import wrapper_cache
+
+    reports = []
+    try:
+        for key, wrapper in wrapper_cache._cache.items():
+            if hasattr(wrapper, 'prompt_cache') and wrapper._prompt_cache is not None:
+                report = wrapper.prompt_cache.get_health_report()
+                reports.append({"model": key, "report": report})
+    except Exception as e:
+        logger.warning(f"Failed to get prompt cache health: {e}")
+
+    return {"reports": reports, "count": len(reports)}
+
+
+@app.post("/api/prompt-cache/clear")
+def clear_prompt_cache():
+    """Clear all prompt caches."""
+    from mlx_omni_server.chat.mlx.wrapper_cache import wrapper_cache
+
+    cleared = 0
+    try:
+        for key, wrapper in wrapper_cache._cache.items():
+            if hasattr(wrapper, 'prompt_cache') and wrapper._prompt_cache is not None:
+                wrapper.prompt_cache.clear()
+                cleared += 1
+    except Exception as e:
+        logger.warning(f"Failed to clear prompt caches: {e}")
+
+    return {"status": "cleared", "caches_cleared": cleared}
+
+
+# =============================================================================
+# Claude Model Routing Configuration
+# =============================================================================
+
+ROUTING_FILE = Path(__file__).parent / "claude_routing.json"
+
+def load_routing_config() -> dict:
+    """Load Claude routing configuration."""
+    if ROUTING_FILE.exists():
+        try:
+            with open(ROUTING_FILE) as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"Failed to load routing config: {e}")
+    return {
+        "enabled": True,
+        "tiers": {
+            "haiku": {"model": None, "draft_model": None},
+            "sonnet": {"model": None, "draft_model": None},
+            "opus": {"model": None, "draft_model": None}
+        },
+        "default_model": None
+    }
+
+def save_routing_config(config: dict):
+    """Save Claude routing configuration."""
+    with open(ROUTING_FILE, "w") as f:
+        json.dump(config, f, indent=2)
+
+
+class TierConfig(BaseModel):
+    model: Optional[str] = None
+    draft_model: Optional[str] = None
+
+
+class RoutingConfig(BaseModel):
+    enabled: bool = True
+    tiers: Dict[str, TierConfig] = {}
+    default_model: Optional[str] = None
+
+
+@app.get("/api/routing/config")
+def get_routing_config():
+    """Get Claude model routing configuration."""
+    config = load_routing_config()
+    return config
+
+
+@app.post("/api/routing/config")
+def set_routing_config(config: RoutingConfig):
+    """Update Claude model routing configuration."""
+    # Load existing to preserve patterns and descriptions
+    existing = load_routing_config()
+
+    # Update with new values
+    existing["enabled"] = config.enabled
+    existing["default_model"] = config.default_model
+
+    for tier_name, tier_config in config.tiers.items():
+        if tier_name in existing.get("tiers", {}):
+            existing["tiers"][tier_name]["model"] = tier_config.model
+            existing["tiers"][tier_name]["draft_model"] = tier_config.draft_model
+
+    save_routing_config(existing)
+
+    # Reload in patches module
+    from patches import reload_routing_config
+    reload_routing_config()
+
+    logger.info(f"Updated routing config: {config}")
+    return {"status": "updated", "config": existing}
+
+
+@app.post("/api/routing/tier/{tier_name}")
+def set_tier_model(tier_name: str, model: Optional[str] = None, draft_model: Optional[str] = None):
+    """Set model for a specific tier (haiku/sonnet/opus)."""
+    config = load_routing_config()
+
+    if tier_name not in config.get("tiers", {}):
+        return {"status": "error", "message": f"Unknown tier: {tier_name}"}
+
+    config["tiers"][tier_name]["model"] = model
+    config["tiers"][tier_name]["draft_model"] = draft_model
+
+    save_routing_config(config)
+
+    # Reload in patches module
+    from patches import reload_routing_config
+    reload_routing_config()
+
+    logger.info(f"Set {tier_name} -> model={model}, draft={draft_model}")
+    return {"status": "updated", "tier": tier_name, "model": model, "draft_model": draft_model}
+
+
+@app.get("/api/routing/resolve/{model_id:path}")
+def resolve_model_routing(model_id: str):
+    """Preview how a model ID would be resolved with current routing config."""
+    from patches import resolve_alias
+    resolved = resolve_alias(model_id)
+    return {
+        "original": model_id,
+        "resolved": resolved,
+        "is_claude": model_id.startswith("claude-")
+    }
+
+
+# =============================================================================
+# Remote MLX Studio Instances
+# =============================================================================
+
+REMOTES_FILE = Path(__file__).parent / "remotes.json"
+
+def load_remotes() -> list:
+    """Load remote instances from config file."""
+    if REMOTES_FILE.exists():
+        try:
+            with open(REMOTES_FILE) as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"Failed to load remotes: {e}")
+    return []
+
+def save_remotes(remotes: list):
+    """Save remote instances to config file."""
+    with open(REMOTES_FILE, "w") as f:
+        json.dump(remotes, f, indent=2)
+
+
+class RemoteConfig(BaseModel):
+    name: str
+    url: str
+    enabled: bool = True
+
+
+@app.get("/api/remotes")
+def get_remotes():
+    """Get all configured remote instances."""
+    remotes = load_remotes()
+    return {"remotes": remotes}
+
+
+@app.post("/api/remotes")
+def add_remote(config: RemoteConfig):
+    """Add a new remote instance."""
+    remotes = load_remotes()
+
+    # Check if name already exists
+    if any(r["name"] == config.name for r in remotes):
+        return {"status": "error", "message": f"Remote '{config.name}' already exists"}
+
+    # Normalize URL
+    url = config.url.strip()
+    if not url.startswith("http://") and not url.startswith("https://"):
+        url = "http://" + url
+
+    remotes.append({
+        "name": config.name,
+        "url": url,
+        "enabled": config.enabled
+    })
+    save_remotes(remotes)
+
+    logger.info(f"Added remote: {config.name} -> {url}")
+    return {"status": "added", "remote": config.name}
+
+
+@app.post("/api/remotes/{name}")
+def update_remote(name: str, enabled: Optional[bool] = None):
+    """Update a remote instance."""
+    remotes = load_remotes()
+
+    for r in remotes:
+        if r["name"] == name:
+            if enabled is not None:
+                r["enabled"] = enabled
+            save_remotes(remotes)
+            return {"status": "updated", "remote": name}
+
+    return {"status": "error", "message": f"Remote '{name}' not found"}
+
+
+@app.delete("/api/remotes/{name}")
+def delete_remote(name: str):
+    """Delete a remote instance."""
+    remotes = load_remotes()
+    original_len = len(remotes)
+    remotes = [r for r in remotes if r["name"] != name]
+
+    if len(remotes) == original_len:
+        return {"status": "error", "message": f"Remote '{name}' not found"}
+
+    save_remotes(remotes)
+    logger.info(f"Deleted remote: {name}")
+    return {"status": "deleted", "remote": name}
+
+
+@app.get("/api/remotes/{name}/health")
+async def check_remote_health(name: str):
+    """Check if a remote instance is healthy."""
+    import httpx
+
+    remotes = load_remotes()
+    remote = next((r for r in remotes if r["name"] == name), None)
+
+    if not remote:
+        return {"status": "error", "message": f"Remote '{name}' not found"}
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(f"{remote['url']}/health")
+            if response.status_code == 200:
+                return {"status": "online", "remote": name}
+            else:
+                return {"status": "offline", "remote": name, "code": response.status_code}
+    except Exception as e:
+        return {"status": "offline", "remote": name, "error": str(e)}
+
+
+@app.get("/api/remotes/{name}/models")
+async def get_remote_models(name: str):
+    """Get available models from a remote instance."""
+    import httpx
+
+    remotes = load_remotes()
+    remote = next((r for r in remotes if r["name"] == name), None)
+
+    if not remote:
+        return {"status": "error", "message": f"Remote '{name}' not found"}
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(f"{remote['url']}/api/models/local")
+            if response.status_code == 200:
+                data = response.json()
+                return {"status": "ok", "remote": name, "models": data.get("models", [])}
+            else:
+                return {"status": "error", "remote": name, "code": response.status_code}
+    except Exception as e:
+        return {"status": "error", "remote": name, "error": str(e)}
+
+
+# =============================================================================
 # Model Aliases Endpoints
 # =============================================================================
 
@@ -221,6 +637,92 @@ def auto_create_aliases():
 def health():
     """Health check endpoint."""
     return {"status": "healthy"}
+
+
+# =============================================================================
+# Anthropic Telemetry Capture (Claude Code CLI sends telemetry here)
+# =============================================================================
+
+from fastapi import Request
+
+@app.post("/anthropic/api/event_logging/batch")
+async def anthropic_telemetry_capture(request: Request):
+    """Capture and log Claude Code CLI telemetry events."""
+    try:
+        body = await request.json()
+        events = body if isinstance(body, list) else body.get("events", [body])
+
+        for event in events:
+            event_type = event.get("type", event.get("event_type", "unknown"))
+            # Log summary of each event
+            if event_type == "unknown":
+                # Just log the keys to understand structure
+                logger.info(f"[Telemetry] Keys: {list(event.keys())}")
+            else:
+                # Log event type and relevant details
+                details = {k: v for k, v in event.items()
+                          if k in ["model", "tokens", "duration", "error", "tool", "status", "message"]}
+                if details:
+                    logger.info(f"[Telemetry] {event_type}: {details}")
+                else:
+                    logger.info(f"[Telemetry] {event_type}")
+    except Exception as e:
+        logger.debug(f"[Telemetry] Failed to parse: {e}")
+
+    return {"status": "ok"}
+
+
+# =============================================================================
+# Server Log Streaming Endpoint
+# =============================================================================
+
+async def log_stream_generator() -> AsyncGenerator[str, None]:
+    """Generate SSE events for log streaming."""
+    import asyncio
+    from queue import Queue, Empty
+
+    queue = Queue(maxsize=100)
+    _log_clients.add(queue)
+
+    try:
+        # Send recent logs first
+        for log in list(_log_buffer):
+            yield f"data: {json.dumps(log)}\n\n"
+
+        # Stream new logs
+        while True:
+            try:
+                log = queue.get_nowait()
+                yield f"data: {json.dumps(log)}\n\n"
+            except Empty:
+                # No log available, wait a bit
+                await asyncio.sleep(0.1)
+                # Send keepalive every few seconds
+                yield ": keepalive\n\n"
+    except asyncio.CancelledError:
+        pass
+    finally:
+        _log_clients.discard(queue)
+
+
+@app.get("/api/logs/stream")
+async def stream_logs():
+    """Stream server logs via SSE."""
+    return StreamingResponse(
+        log_stream_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
+
+@app.get("/api/logs/recent")
+def get_recent_logs():
+    """Get recent server logs (last 100)."""
+    return {"logs": list(_log_buffer)}
 
 
 # =============================================================================

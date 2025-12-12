@@ -39,10 +39,13 @@ export function ChatInput() {
 
         setValue('');
         setStats(null);
-        setLiveStats({ tokens: 0, tps: 0, cache_hit: false });
+        setLiveStats({ tokens: 0, tps: 0, cache_hit: false, processing: true });
         actions.setIsGenerating(true);
         actions.addMessage({ role: 'user', content });
-        actions.addLog('info', `Sending message (${content.length} chars)`);
+        actions.addLog('info', `Sending message (${content.length} chars)...`);
+
+        // Use setTimeout to ensure UI updates before blocking fetch
+        await new Promise(resolve => setTimeout(resolve, 0));
 
         // Update chat name if first message
         const chat = chats.find(c => c.id === currentChatId);
@@ -78,6 +81,7 @@ export function ChatInput() {
             const modelPath = currentModel.path || currentModel.id;
 
             if (settings.streamEnabled) {
+                let firstChunk = true;
                 await endpoints.chatStream({
                     model: modelPath,
                     messages: messagesWithSystem,
@@ -91,12 +95,17 @@ export function ChatInput() {
                 },
                 // onChunk callback
                 (delta) => {
+                    if (firstChunk) {
+                        firstChunk = false;
+                        setLiveStats(s => ({ ...s, processing: false }));
+                        actions.addLog('info', 'First token received, streaming...');
+                    }
                     responseText += delta;
                     actions.updateLastMessage(responseText);
                 },
                 // onStats callback (real-time)
                 (stats) => {
-                    setLiveStats(stats);
+                    setLiveStats({ ...stats, processing: false });
                     finalStats = stats;
                 });
             } else {
@@ -174,17 +183,24 @@ export function ChatInput() {
                             <div class="chat-input-right">
                                 ${displayStats && html`
                                     <div class="chat-input-stats ${liveStats ? 'live' : ''}">
-                                        ${displayStats.cache_hit && html`
+                                        ${displayStats.processing && html`
+                                            <span class="stat-badge processing" title="Processing prompt...">
+                                                <span class="processing-spinner"></span> processing
+                                            </span>
+                                        `}
+                                        ${displayStats.cache_hit && !displayStats.processing && html`
                                             <span class="stat-badge cache-hit" title="KV Cache Hit">
                                                 <${ZapIcon} size=${12} /> cached
                                             </span>
                                         `}
-                                        <span class="stat-item">
-                                            <strong>${displayStats.tokens || 0}</strong> tokens
-                                        </span>
-                                        <span class="stat-item">
-                                            <strong>${displayStats.tps || liveStats?.tps?.toFixed(1) || '0'}</strong> tok/s
-                                        </span>
+                                        ${!displayStats.processing && html`
+                                            <span class="stat-item">
+                                                <strong>${displayStats.tokens || 0}</strong> tokens
+                                            </span>
+                                            <span class="stat-item">
+                                                <strong>${displayStats.tps || liveStats?.tps?.toFixed(1) || '0'}</strong> tok/s
+                                            </span>
+                                        `}
                                         ${stats && html`
                                             <span class="stat-item">
                                                 <strong>${stats.time}</strong>s

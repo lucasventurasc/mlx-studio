@@ -165,5 +165,65 @@ export const endpoints = {
     aliases: () => api.get('/api/aliases'),
     addAlias: (alias, modelPath) => api.post('/api/aliases', { alias, model_path: modelPath }),
     deleteAlias: (alias) => api.delete(`/api/aliases/${encodeURIComponent(alias)}`),
-    autoCreateAliases: () => api.post('/api/aliases/auto')
+    autoCreateAliases: () => api.post('/api/aliases/auto'),
+
+    // =========================================================================
+    // Prompt Cache Settings (SmartPromptCache - works for both OpenAI & Anthropic)
+    // =========================================================================
+    promptCacheConfig: () => api.get('/api/prompt-cache/config'),
+    setPromptCacheConfig: (config) => api.post('/api/prompt-cache/config', config),
+    promptCacheStats: () => api.get('/api/prompt-cache/stats'),
+    promptCacheHealth: () => api.get('/api/prompt-cache/health'),
+    promptCacheClear: () => api.post('/api/prompt-cache/clear'),
+
+    // =========================================================================
+    // Claude Model Routing (maps Claude tiers to local models)
+    // =========================================================================
+    routingConfig: () => api.get('/api/routing/config'),
+    setRoutingConfig: (config) => api.post('/api/routing/config', config),
+    setTierModel: (tier, model, draftModel) => api.post(`/api/routing/tier/${tier}?model=${encodeURIComponent(model || '')}&draft_model=${encodeURIComponent(draftModel || '')}`),
+    resolveModel: (modelId) => api.get(`/api/routing/resolve/${encodeURIComponent(modelId)}`),
+
+    // =========================================================================
+    // Server Log Streaming
+    // =========================================================================
+    recentLogs: () => api.get('/api/logs/recent'),
+    logStreamUrl: () => `${API_BASE}/api/logs/stream`,
+
+    // =========================================================================
+    // Remote Instances
+    // =========================================================================
+    remotes: () => api.get('/api/remotes'),
+    addRemote: (name, url) => api.post('/api/remotes', { name, url }),
+    updateRemote: (name, config) => api.post(`/api/remotes/${encodeURIComponent(name)}`, config),
+    deleteRemote: (name) => api.delete(`/api/remotes/${encodeURIComponent(name)}`),
+    remoteHealth: (name) => api.get(`/api/remotes/${encodeURIComponent(name)}/health`),
+    remoteModels: (name) => api.get(`/api/remotes/${encodeURIComponent(name)}/models`)
 };
+
+/**
+ * Server log stream connection
+ * Uses SSE to receive real-time logs from the server
+ */
+export function createLogStream(onLog, onError) {
+    const url = `${API_BASE}/api/logs/stream`;
+    const eventSource = new EventSource(url);
+
+    eventSource.onmessage = (event) => {
+        try {
+            const log = JSON.parse(event.data);
+            onLog(log);
+        } catch (e) {
+            console.warn('Failed to parse log:', e);
+        }
+    };
+
+    eventSource.onerror = (error) => {
+        if (onError) onError(error);
+        // Auto-reconnect is handled by EventSource
+    };
+
+    return {
+        close: () => eventSource.close()
+    };
+}

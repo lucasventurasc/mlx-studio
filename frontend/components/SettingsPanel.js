@@ -203,6 +203,10 @@ export function SettingsPanel() {
                 </div>
 
                 <${AliasesSection} />
+
+                <${ClaudeRoutingSection} />
+
+                <${PromptCacheSection} />
             </div>
         </aside>
     `;
@@ -231,6 +235,189 @@ function SliderSetting({ label, value, min, max, step, displayValue, onChange })
 function formatContextSize(size) {
     if (size >= 1000) return `${Math.round(size / 1024)}K`;
     return size;
+}
+
+// Claude Model Routing Section
+function ClaudeRoutingSection() {
+    const [config, setConfig] = useState(null);
+    const [localModels, setLocalModels] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [expanded, setExpanded] = useState(false);
+
+    useEffect(() => {
+        loadData();
+    }, []);
+
+    const loadData = async () => {
+        setLoading(true);
+        try {
+            const [routingRes, modelsRes] = await Promise.all([
+                endpoints.routingConfig(),
+                endpoints.localModels()
+            ]);
+            setConfig(routingRes);
+            setLocalModels(modelsRes.models || []);
+        } catch (e) {
+            console.error('Failed to load routing config:', e);
+        }
+        setLoading(false);
+    };
+
+    const handleTierChange = async (tier, field, value) => {
+        const newConfig = { ...config };
+        if (!newConfig.tiers[tier]) {
+            newConfig.tiers[tier] = { model: null, draft_model: null };
+        }
+        newConfig.tiers[tier][field] = value || null;
+        setConfig(newConfig);
+
+        try {
+            const tierConfig = newConfig.tiers[tier];
+            await endpoints.setTierModel(tier, tierConfig.model, tierConfig.draft_model);
+            showToast(`Updated ${tier} routing`);
+        } catch (e) {
+            showToast('Failed to update routing');
+        }
+    };
+
+    const handleDefaultChange = async (value) => {
+        const newConfig = { ...config, default_model: value || null };
+        setConfig(newConfig);
+
+        try {
+            await endpoints.setRoutingConfig({
+                enabled: newConfig.enabled,
+                tiers: newConfig.tiers,
+                default_model: newConfig.default_model
+            });
+            showToast('Updated default model');
+        } catch (e) {
+            showToast('Failed to update default');
+        }
+    };
+
+    const handleToggleEnabled = async () => {
+        const newConfig = { ...config, enabled: !config.enabled };
+        setConfig(newConfig);
+
+        try {
+            await endpoints.setRoutingConfig({
+                enabled: newConfig.enabled,
+                tiers: newConfig.tiers,
+                default_model: newConfig.default_model
+            });
+            showToast(newConfig.enabled ? 'Routing enabled' : 'Routing disabled');
+        } catch (e) {
+            showToast('Failed to toggle routing');
+        }
+    };
+
+    const getShortName = (path) => {
+        if (!path) return 'Not set';
+        const parts = path.split('/');
+        return parts[parts.length - 1] || path;
+    };
+
+    const TIER_INFO = {
+        haiku: { name: 'Haiku', desc: 'Fast tasks (glob, grep, explore)', color: '#10b981' },
+        sonnet: { name: 'Sonnet', desc: 'Reasoning, planning', color: '#3b82f6' },
+        opus: { name: 'Opus', desc: 'Implementation, complex tasks', color: '#8b5cf6' }
+    };
+
+    return html`
+        <div class="settings-section">
+            <div class="settings-section-title" style="display: flex; justify-content: space-between; align-items: center;">
+                <span>Claude Model Routing</span>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    ${config && html`
+                        <div
+                            class="toggle-switch ${config.enabled ? 'active' : ''}"
+                            onClick=${handleToggleEnabled}
+                            title="${config.enabled ? 'Disable' : 'Enable'} routing"
+                            style="transform: scale(0.8);"
+                        ></div>
+                    `}
+                    <button
+                        class="section-toggle"
+                        onClick=${() => setExpanded(!expanded)}
+                        style="background: none; border: none; color: var(--fg-2); cursor: pointer; font-size: 12px;"
+                    >
+                        ${expanded ? '▼' : '▶'}
+                    </button>
+                </div>
+            </div>
+
+            ${loading ? html`
+                <div class="setting-item" style="color: var(--fg-2); font-size: 13px;">Loading...</div>
+            ` : html`
+                <!-- Quick status -->
+                <div style="font-size: 12px; color: var(--fg-2); margin-bottom: 8px;">
+                    ${config?.enabled ? 'Routes Claude API calls to local models by tier' : 'Routing disabled - using default model'}
+                </div>
+
+                ${expanded && config && html`
+                    <!-- Tier configurations -->
+                    ${Object.entries(TIER_INFO).map(([tier, info]) => html`
+                        <div key=${tier} class="tier-config" style="margin-bottom: 12px; padding: 8px; background: var(--bg-2); border-radius: 6px;">
+                            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+                                <span style="width: 8px; height: 8px; border-radius: 50%; background: ${info.color};"></span>
+                                <span style="font-weight: 500; font-size: 13px;">${info.name}</span>
+                                <span style="font-size: 11px; color: var(--fg-3);">${info.desc}</span>
+                            </div>
+
+                            <div style="display: flex; gap: 8px;">
+                                <select
+                                    class="setting-input"
+                                    style="flex: 1; font-size: 12px;"
+                                    value=${config.tiers[tier]?.model || ''}
+                                    onChange=${e => handleTierChange(tier, 'model', e.target.value)}
+                                >
+                                    <option value="">Model: Not set</option>
+                                    ${localModels.map(m => html`
+                                        <option key=${m.id} value=${m.path || m.id}>${getShortName(m.id)}</option>
+                                    `)}
+                                </select>
+
+                                <select
+                                    class="setting-input"
+                                    style="flex: 1; font-size: 12px;"
+                                    value=${config.tiers[tier]?.draft_model || ''}
+                                    onChange=${e => handleTierChange(tier, 'draft_model', e.target.value)}
+                                    title="Draft model for speculative decoding"
+                                >
+                                    <option value="">Draft: None</option>
+                                    ${localModels.map(m => html`
+                                        <option key=${m.id} value=${m.path || m.id}>${getShortName(m.id)}</option>
+                                    `)}
+                                </select>
+                            </div>
+                        </div>
+                    `)}
+
+                    <!-- Default fallback -->
+                    <div style="margin-top: 12px;">
+                        <div style="font-size: 12px; color: var(--fg-2); margin-bottom: 4px;">Default (fallback)</div>
+                        <select
+                            class="setting-input"
+                            style="width: 100%; font-size: 12px;"
+                            value=${config.default_model || ''}
+                            onChange=${e => handleDefaultChange(e.target.value)}
+                        >
+                            <option value="">Use alias fallback</option>
+                            ${localModels.map(m => html`
+                                <option key=${m.id} value=${m.path || m.id}>${getShortName(m.id)}</option>
+                            `)}
+                        </select>
+                    </div>
+
+                    <div style="font-size: 11px; color: var(--fg-3); margin-top: 8px;">
+                        Maps Claude Code model tiers (haiku/sonnet/opus) to your local models.
+                        Draft model enables speculative decoding for faster generation.
+                    </div>
+                `}
+            `}
+        </div>
+    `;
 }
 
 // Aliases Section Component
@@ -361,6 +548,172 @@ function AliasesSection() {
                 <button class="alias-auto-btn" onClick=${handleAutoCreate}>
                     Auto-create aliases
                 </button>
+            `}
+        </div>
+    `;
+}
+
+
+// Prompt Cache Settings Section (works for both OpenAI & Anthropic APIs)
+function PromptCacheSection() {
+    const [config, setConfig] = useState({
+        block_size: 256,
+        max_slots: 4,
+        min_reuse_tokens: 512,
+        max_cached_tokens: 65536
+    });
+    const [stats, setStats] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [expanded, setExpanded] = useState(false);
+
+    // Load config and stats on mount
+    useEffect(() => {
+        loadData();
+    }, []);
+
+    const loadData = async () => {
+        setLoading(true);
+        try {
+            const [configRes, statsRes] = await Promise.all([
+                endpoints.promptCacheConfig(),
+                endpoints.promptCacheStats()
+            ]);
+            setConfig(configRes);
+            setStats(statsRes);
+        } catch (e) {
+            console.error('Failed to load cache config:', e);
+        }
+        setLoading(false);
+    };
+
+    const handleConfigChange = async (key, value) => {
+        const newConfig = { ...config, [key]: value };
+        setConfig(newConfig);
+
+        try {
+            await endpoints.setPromptCacheConfig(newConfig);
+            showToast('Cache config updated (applies on next request)');
+        } catch (e) {
+            showToast('Failed to update config');
+        }
+    };
+
+    const handleClearCache = async () => {
+        try {
+            const result = await endpoints.promptCacheClear();
+            showToast(`Cleared ${result.caches_cleared} cache(s)`);
+            loadData();
+        } catch (e) {
+            showToast('Failed to clear cache');
+        }
+    };
+
+    // Calculate total stats across all caches
+    const getTotalStats = () => {
+        if (!stats?.caches) return null;
+        const caches = Object.values(stats.caches);
+        if (caches.length === 0) return null;
+
+        return caches.reduce((acc, cache) => ({
+            total_requests: acc.total_requests + (cache.total_requests || 0),
+            cache_hits: acc.cache_hits + (cache.cache_hits || 0),
+            tokens_saved: acc.tokens_saved + (cache.tokens_saved || 0),
+            active_slots: acc.active_slots + (cache.active_slots || 0)
+        }), { total_requests: 0, cache_hits: 0, tokens_saved: 0, active_slots: 0 });
+    };
+
+    const totalStats = getTotalStats();
+    const hitRate = totalStats && totalStats.total_requests > 0
+        ? ((totalStats.cache_hits / totalStats.total_requests) * 100).toFixed(1)
+        : '0';
+
+    return html`
+        <div class="settings-section">
+            <div class="settings-section-title" style="display: flex; justify-content: space-between; align-items: center;">
+                <span>Prompt Cache (KV)</span>
+                <button
+                    class="section-toggle"
+                    onClick=${() => setExpanded(!expanded)}
+                    style="background: none; border: none; color: var(--fg-2); cursor: pointer; font-size: 12px;"
+                >
+                    ${expanded ? '▼' : '▶'}
+                </button>
+            </div>
+
+            ${loading ? html`
+                <div class="setting-item" style="color: var(--fg-2); font-size: 13px;">Loading...</div>
+            ` : html`
+                <!-- Stats Summary -->
+                <div class="cache-stats-summary" style="display: flex; gap: 12px; margin-bottom: 12px; font-size: 12px;">
+                    <div style="color: var(--fg-2);">
+                        Hit Rate: <span style="color: ${parseFloat(hitRate) > 50 ? 'var(--success)' : 'var(--fg-1)'}">${hitRate}%</span>
+                    </div>
+                    <div style="color: var(--fg-2);">
+                        Saved: <span style="color: var(--fg-1)">${totalStats ? totalStats.tokens_saved.toLocaleString() : 0}</span> tokens
+                    </div>
+                    <div style="color: var(--fg-2);">
+                        Slots: <span style="color: var(--fg-1)">${totalStats?.active_slots || 0}/${config.max_slots}</span>
+                    </div>
+                </div>
+
+                ${expanded && html`
+                    <!-- Block Size -->
+                    <${SliderSetting}
+                        label="Block Size"
+                        value=${config.block_size}
+                        min="64"
+                        max="1024"
+                        step="64"
+                        displayValue="${config.block_size} tokens"
+                        onChange=${v => handleConfigChange('block_size', v)}
+                    />
+
+                    <!-- Max Slots -->
+                    <${SliderSetting}
+                        label="Max Slots"
+                        value=${config.max_slots}
+                        min="1"
+                        max="8"
+                        step="1"
+                        onChange=${v => handleConfigChange('max_slots', v)}
+                    />
+
+                    <!-- Min Reuse Tokens -->
+                    <${SliderSetting}
+                        label="Min Reuse"
+                        value=${config.min_reuse_tokens}
+                        min="128"
+                        max="2048"
+                        step="128"
+                        displayValue="${config.min_reuse_tokens} tokens"
+                        onChange=${v => handleConfigChange('min_reuse_tokens', v)}
+                    />
+
+                    <!-- Max Cached Tokens -->
+                    <${SliderSetting}
+                        label="Max Tokens/Slot"
+                        value=${config.max_cached_tokens}
+                        min="8192"
+                        max="131072"
+                        step="8192"
+                        displayValue="${Math.round(config.max_cached_tokens / 1024)}K"
+                        onChange=${v => handleConfigChange('max_cached_tokens', v)}
+                    />
+
+                    <div style="display: flex; gap: 8px; margin-top: 8px;">
+                        <button class="alias-auto-btn" onClick=${handleClearCache} style="flex: 1;">
+                            Clear Cache
+                        </button>
+                        <button class="alias-auto-btn" onClick=${loadData} style="flex: 1;">
+                            Refresh Stats
+                        </button>
+                    </div>
+
+                    <div style="font-size: 11px; color: var(--fg-3); margin-top: 8px;">
+                        Cache works for both OpenAI and Anthropic APIs.
+                        Higher hit rate = faster responses for Claude Code.
+                    </div>
+                `}
             `}
         </div>
     `;
