@@ -106,12 +106,21 @@
     position: relative;
 }
 
+.topbar-left {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
 .topbar-logo {
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    padding-right: var(--space-4);
-    border-right: 1px solid var(--border);
+}
+
+.topbar-chats-btn {
+    padding-left: var(--space-3);
+    border-left: 1px solid var(--border);
 }
 
 .topbar-logo-icon {

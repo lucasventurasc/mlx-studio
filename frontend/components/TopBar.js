@@ -285,9 +285,14 @@ export function TopBar() {
 
     return html`
         <header class="topbar">
-            <div class="topbar-logo" ref=${logoRef} onClick=${handleLogoClick} style="cursor: pointer;">
-                <div class="topbar-logo-icon">M</div>
-                <span class="topbar-logo-text">MLX<span> Studio</span></span>
+            <div class="topbar-left">
+                <div class="topbar-logo" ref=${logoRef} onClick=${handleLogoClick} style="cursor: pointer;">
+                    <div class="topbar-logo-icon">M</div>
+                    <span class="topbar-logo-text">MLX<span> Studio</span></span>
+                </div>
+                <button class="btn btn-icon topbar-chats-btn" onClick=${actions.toggleChats} title="Chats">
+                    <${ChatIcon} size=${18} />
+                </button>
             </div>
 
             <div class="topbar-center">
@@ -302,9 +307,6 @@ export function TopBar() {
             <div class="topbar-actions topbar-actions-desktop">
                 <${ApiBadge} networkMode=${networkMode} networkAddresses=${networkAddresses} onClick=${actions.openNetworkModal} />
                 <${StatusPill} connected=${connected} loading=${loading} />
-                <button class="btn btn-icon" onClick=${actions.toggleChats} title="Chats">
-                    <${ChatIcon} size=${18} />
-                </button>
                 <button class="btn btn-icon" onClick=${actions.openModelComparator} title="Compare Models">
                     <${ColumnsIcon} size=${18} />
                 </button>
