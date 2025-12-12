@@ -1,0 +1,15 @@
+model_list:
+  - model_name: qwen
+    litellm_params:
+      model: openai/qwen
+      api_base: http://localhost:1234/v1
+      api_key: not-needed
+
+  - model_name: "*"
+    litellm_params:
+      model: openai/*
+      api_base: http://localhost:1234/v1
+      api_key: not-needed
+
+general_settings:
+  master_key: sk-mlx-studio

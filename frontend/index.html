@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MLX Studio</title>
+    <meta name="description" content="High-performance MLX inference server with KV caching">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Highlight.js - loads both themes, CSS handles switching -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" id="hljs-dark">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" id="hljs-light" disabled>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <link rel="stylesheet" href="styles/theme.css">
+    <link rel="stylesheet" href="styles/components.css">
+    <style>
+        /* Toggle highlight.js theme based on data-theme */
+        :root:not([data-theme="dark"]) #hljs-dark,
+        [data-theme="light"] #hljs-dark { display: none; }
+        :root:not([data-theme="dark"]) #hljs-light,
+        [data-theme="light"] #hljs-light { display: block; }
+
+        [data-theme="dark"] #hljs-dark { display: block; }
+        [data-theme="dark"] #hljs-light { display: none; }
+
+        /* System preference handling */
+        @media (prefers-color-scheme: light) {
+            :root:not([data-theme]) #hljs-dark { display: none; }
+            :root:not([data-theme]) #hljs-light { display: block; }
+        }
+    </style>
+</head>
+<body>
+    <div id="app"></div>
+
+    <!-- Preact + HTM via CDN (no build step needed) -->
+    <script type="module">
+        import { h, render } from 'https://esm.sh/preact@10.19.3';
+        import { useState, useEffect, useRef, useCallback } from 'https://esm.sh/preact@10.19.3/hooks';
+        import htm from 'https://esm.sh/htm@3.1.1';
+
+        // Bind htm to Preact's h
+        const html = htm.bind(h);
+
+        // Make available globally for components
+        window.preact = { h, render, html, useState, useEffect, useRef, useCallback };
+
+        // Import and render app
+        import('./app.js').then(({ App }) => {
+            render(html`<${App} />`, document.getElementById('app'));
+        });
+    </script>
+</body>
+</html>

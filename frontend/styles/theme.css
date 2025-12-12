@@ -1,0 +1,306 @@
+/* ==================== DESIGN TOKENS ==================== */
+:root {
+    /* Backgrounds - Dark theme inspired by Claude UI */
+    --bg-0: #0a0a0a;
+    --bg-1: #0f0f0f;
+    --bg-2: #171717;
+    --bg-3: #1f1f1f;
+    --bg-4: #292929;
+    --bg-elevated: #1a1a1a;
+    --bg-hover: rgba(255, 255, 255, 0.04);
+    --bg-active: rgba(255, 255, 255, 0.08);
+
+    /* Foregrounds */
+    --fg-0: #fafafa;
+    --fg-1: #a1a1a1;
+    --fg-2: #737373;
+    --fg-3: #525252;
+    --fg-muted: #404040;
+
+    /* Accent - Green */
+    --accent: #22c55e;
+    --accent-hover: #16a34a;
+    --accent-muted: rgba(34, 197, 94, 0.15);
+    --accent-border: rgba(34, 197, 94, 0.3);
+
+    /* Semantic Colors */
+    --info: #3b82f6;
+    --info-muted: rgba(59, 130, 246, 0.15);
+    --warning: #eab308;
+    --warning-muted: rgba(234, 179, 8, 0.15);
+    --error: #ef4444;
+    --error-muted: rgba(239, 68, 68, 0.15);
+    --success: #22c55e;
+    --success-muted: rgba(34, 197, 94, 0.15);
+
+    /* Role Colors */
+    --user-color: #3b82f6;
+    --assistant-color: #a855f7;
+    --system-color: #eab308;
+
+    /* Borders */
+    --border: #262626;
+    --border-light: #333333;
+    --border-focus: var(--accent);
+
+    /* Typography */
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+
+    /* Sizing */
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 20px;
+    --radius-full: 9999px;
+
+    /* Spacing */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --space-8: 32px;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
+    --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.7);
+
+    /* Transitions */
+    --transition-fast: 100ms ease;
+    --transition-base: 150ms ease;
+    --transition-slow: 250ms ease;
+
+    /* Z-index */
+    --z-dropdown: 100;
+    --z-modal: 1000;
+    --z-toast: 2000;
+
+    /* Code block colors (dark) */
+    --code-bg: #0d1117;
+    --code-header-bg: #161b22;
+}
+
+/* ==================== LIGHT MODE ==================== */
+[data-theme="light"] {
+    /* Backgrounds - Light theme inspired by Claude UI */
+    --bg-0: #ffffff;
+    --bg-1: #fafafa;
+    --bg-2: #f5f5f5;
+    --bg-3: #ebebeb;
+    --bg-4: #e0e0e0;
+    --bg-elevated: #ffffff;
+    --bg-hover: rgba(0, 0, 0, 0.04);
+    --bg-active: rgba(0, 0, 0, 0.08);
+
+    /* Foregrounds */
+    --fg-0: #171717;
+    --fg-1: #525252;
+    --fg-2: #737373;
+    --fg-3: #a1a1a1;
+    --fg-muted: #d4d4d4;
+
+    /* Accent - Green (slightly adjusted for light mode) */
+    --accent: #16a34a;
+    --accent-hover: #15803d;
+    --accent-muted: rgba(22, 163, 74, 0.12);
+    --accent-border: rgba(22, 163, 74, 0.25);
+
+    /* Semantic Colors */
+    --info: #2563eb;
+    --info-muted: rgba(37, 99, 235, 0.12);
+    --warning: #ca8a04;
+    --warning-muted: rgba(202, 138, 4, 0.12);
+    --error: #dc2626;
+    --error-muted: rgba(220, 38, 38, 0.12);
+    --success: #16a34a;
+    --success-muted: rgba(22, 163, 74, 0.12);
+
+    /* Role Colors */
+    --user-color: #2563eb;
+    --assistant-color: #9333ea;
+    --system-color: #ca8a04;
+
+    /* Borders */
+    --border: #e5e5e5;
+    --border-light: #d4d4d4;
+    --border-focus: var(--accent);
+
+    /* Shadows (lighter for light mode) */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+    --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.15);
+
+    /* Code block colors (light) */
+    --code-bg: #f6f8fa;
+    --code-header-bg: #eaeef2;
+}
+
+/* Prefer system color scheme */
+@media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+        /* Backgrounds - Light theme inspired by Claude UI */
+        --bg-0: #ffffff;
+        --bg-1: #fafafa;
+        --bg-2: #f5f5f5;
+        --bg-3: #ebebeb;
+        --bg-4: #e0e0e0;
+        --bg-elevated: #ffffff;
+        --bg-hover: rgba(0, 0, 0, 0.04);
+        --bg-active: rgba(0, 0, 0, 0.08);
+
+        /* Foregrounds */
+        --fg-0: #171717;
+        --fg-1: #525252;
+        --fg-2: #737373;
+        --fg-3: #a1a1a1;
+        --fg-muted: #d4d4d4;
+
+        /* Accent - Green (slightly adjusted for light mode) */
+        --accent: #16a34a;
+        --accent-hover: #15803d;
+        --accent-muted: rgba(22, 163, 74, 0.12);
+        --accent-border: rgba(22, 163, 74, 0.25);
+
+        /* Semantic Colors */
+        --info: #2563eb;
+        --info-muted: rgba(37, 99, 235, 0.12);
+        --warning: #ca8a04;
+        --warning-muted: rgba(202, 138, 4, 0.12);
+        --error: #dc2626;
+        --error-muted: rgba(220, 38, 38, 0.12);
+        --success: #16a34a;
+        --success-muted: rgba(22, 163, 74, 0.12);
+
+        /* Role Colors */
+        --user-color: #2563eb;
+        --assistant-color: #9333ea;
+        --system-color: #ca8a04;
+
+        /* Borders */
+        --border: #e5e5e5;
+        --border-light: #d4d4d4;
+        --border-focus: var(--accent);
+
+        /* Shadows (lighter for light mode) */
+        --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
+        --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+        --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+        --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.15);
+
+        /* Code block colors (light) */
+        --code-bg: #f6f8fa;
+        --code-header-bg: #eaeef2;
+    }
+}
+
+/* ==================== RESET ==================== */
+*, *::before, *::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html, body, #app {
+    height: 100%;
+    font-family: var(--font-sans);
+    background: var(--bg-0);
+    color: var(--fg-0);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+    background: var(--accent);
+    color: var(--bg-0);
+}
+
+/* ==================== SCROLLBAR ==================== */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--bg-4);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--fg-3);
+}
+
+/* ==================== FOCUS STYLES ==================== */
+:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* ==================== ANIMATIONS ==================== */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@keyframes thinking {
+    0%, 80%, 100% { transform: scale(1); opacity: 0.4; }
+    40% { transform: scale(1.2); opacity: 1; }
+}
+
+/* ==================== UTILITY CLASSES ==================== */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+}
+
+.truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.animate-fade-in { animation: fadeIn var(--transition-base); }
+.animate-slide-up { animation: slideUp var(--transition-base); }
+.animate-slide-down { animation: slideDown var(--transition-base); }
+.animate-scale-in { animation: scaleIn var(--transition-base); }

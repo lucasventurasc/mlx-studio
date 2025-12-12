@@ -1,0 +1,3 @@
+[submodule "vendor/mlx-omni-server"]
+	path = vendor/mlx-omni-server
+	url = git@github.com:madroidmaq/mlx-omni-server.git
