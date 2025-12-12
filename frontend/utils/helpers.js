@@ -31,8 +31,71 @@ export function copyToClipboard(text) {
     return navigator.clipboard.writeText(text);
 }
 
+// Parse thinking blocks and regular content from response
+export function parseThinkingContent(text) {
+    const thinkRegex = /<think>([\s\S]*?)<\/think>/g;
+    const parts = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = thinkRegex.exec(text)) !== null) {
+        // Add content before thinking block
+        if (match.index > lastIndex) {
+            const beforeContent = text.slice(lastIndex, match.index).trim();
+            if (beforeContent) {
+                parts.push({ type: 'content', text: beforeContent });
+            }
+        }
+        // Add thinking block
+        parts.push({ type: 'thinking', text: match[1].trim() });
+        lastIndex = match.index + match[0].length;
+    }
+
+    // Add remaining content after last thinking block
+    if (lastIndex < text.length) {
+        const afterContent = text.slice(lastIndex).trim();
+        if (afterContent) {
+            parts.push({ type: 'content', text: afterContent });
+        }
+    }
+
+    // If no thinking blocks found, return whole text as content
+    if (parts.length === 0 && text.trim()) {
+        parts.push({ type: 'content', text: text });
+    }
+
+    return parts;
+}
+
+// Check if response is still in thinking phase (has unclosed think tag)
+export function isStillThinking(text) {
+    const openTags = (text.match(/<think>/g) || []).length;
+    const closeTags = (text.match(/<\/think>/g) || []).length;
+    return openTags > closeTags;
+}
+
+// Get current thinking content (inside unclosed think tag)
+export function getCurrentThinking(text) {
+    const lastOpenIndex = text.lastIndexOf('<think>');
+    if (lastOpenIndex === -1) return null;
+
+    const afterOpen = text.slice(lastOpenIndex + 7);
+    const closeIndex = afterOpen.indexOf('</think>');
+
+    if (closeIndex === -1) {
+        // Unclosed - still thinking
+        return afterOpen;
+    }
+    return null;
+}
+
 // Markdown renderer with syntax highlighting
 export function renderMarkdown(text) {
+    // First, handle <markdown> tags - extract and process their content
+    text = text.replace(/<markdown>([\s\S]*?)<\/markdown>/g, (match, content) => {
+        return content; // Just extract the content, it will be processed below
+    });
+
     let html = escapeHtml(text);
 
     // Code blocks with syntax highlighting

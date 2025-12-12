@@ -1,8 +1,8 @@
 // Chat Messages component
-const { html, useEffect, useRef } = window.preact;
+const { html, useEffect, useRef, useState } = window.preact;
 import { useStore } from '../hooks/useStore.js';
-import { renderMarkdown, formatTime } from '../utils/helpers.js';
-import { UserIcon, SparklesIcon, InfoIcon } from './Icons.js';
+import { renderMarkdown, formatTime, parseThinkingContent, isStillThinking, getCurrentThinking } from '../utils/helpers.js';
+import { UserIcon, SparklesIcon, InfoIcon, ChevronDownIcon } from './Icons.js';
 
 export function ChatMessages() {
     const { messages, isGenerating, currentModel, isLoadingModel } = useStore(s => ({
@@ -58,6 +58,7 @@ export function ChatMessages() {
 
 function Message({ role, content, modelName, isLast, isGenerating }) {
     const time = formatTime(new Date());
+    const [thinkingExpanded, setThinkingExpanded] = useState(false);
 
     // Get display name based on role
     const getDisplayName = () => {
@@ -74,9 +75,86 @@ function Message({ role, content, modelName, isLast, isGenerating }) {
         return html`<${SparklesIcon} size=${16} />`;
     };
 
-    const renderedContent = role === 'assistant'
-        ? { __html: renderMarkdown(content) }
-        : { __html: content.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') };
+    // For assistant messages, parse thinking blocks
+    const renderAssistantContent = () => {
+        if (!content) {
+            return html`
+                <div class="generating-indicator">
+                    <div class="thinking-dots">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                    <span class="generating-text">Processing prompt...</span>
+                </div>
+            `;
+        }
+
+        // Check if currently thinking (unclosed think tag)
+        const stillThinking = isStillThinking(content);
+        const currentThinkingText = getCurrentThinking(content);
+
+        // Parse completed thinking blocks and content
+        const parts = parseThinkingContent(content);
+
+        // If still in thinking phase, show the live thinking
+        if (stillThinking && currentThinkingText !== null) {
+            return html`
+                <div class="thinking-block active">
+                    <div class="thinking-header">
+                        <div class="thinking-indicator">
+                            <span class="thinking-pulse"></span>
+                            <span>Thinking...</span>
+                        </div>
+                    </div>
+                    <div class="thinking-content">
+                        <pre>${currentThinkingText}</pre>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Render parsed parts
+        return parts.map((part, idx) => {
+            if (part.type === 'thinking') {
+                return html`
+                    <div class="thinking-block completed" key=${idx}>
+                        <button
+                            class="thinking-toggle ${thinkingExpanded ? 'expanded' : ''}"
+                            onClick=${() => setThinkingExpanded(!thinkingExpanded)}
+                        >
+                            <${ChevronDownIcon} size=${14} />
+                            <span>Thought process</span>
+                            <span class="thinking-length">${part.text.length} chars</span>
+                        </button>
+                        ${thinkingExpanded && html`
+                            <div class="thinking-content">
+                                <pre>${part.text}</pre>
+                            </div>
+                        `}
+                    </div>
+                `;
+            } else {
+                return html`
+                    <div
+                        class="message-text"
+                        key=${idx}
+                        dangerouslySetInnerHTML=${{ __html: renderMarkdown(part.text) }}
+                    ></div>
+                `;
+            }
+        });
+    };
+
+    // User messages - escape HTML
+    const renderUserContent = () => {
+        return html`
+            <div
+                class="message-text"
+                dangerouslySetInnerHTML=${{ __html: content.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') }}
+            ></div>
+        `;
+    };
 
     return html`
         <div class="message ${role}">
@@ -89,18 +167,7 @@ function Message({ role, content, modelName, isLast, isGenerating }) {
                     <span class="message-time">${time}</span>
                 </div>
                 <div class="message-bubble">
-                    ${isGenerating && !content ? html`
-                        <div class="generating-indicator">
-                            <div class="thinking-dots">
-                                <span></span>
-                                <span></span>
-                                <span></span>
-                            </div>
-                            <span class="generating-text">Processing prompt...</span>
-                        </div>
-                    ` : html`
-                        <div class="message-text" dangerouslySetInnerHTML=${renderedContent}></div>
-                    `}
+                    ${role === 'assistant' ? renderAssistantContent() : renderUserContent()}
                 </div>
             </div>
         </div>
