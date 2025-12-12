@@ -34,10 +34,21 @@ def resolve_alias(model_id: str) -> str:
     """Resolve a model alias to its full path."""
     if not _MODEL_ALIASES:
         load_aliases()
+
+    # Direct alias match
     if model_id in _MODEL_ALIASES:
         resolved = _MODEL_ALIASES[model_id]
         print(f"[patches] Resolved alias '{model_id}' -> '{resolved}'")
         return resolved
+
+    # Pattern-based alias for Claude models -> redirect to default local model
+    if model_id.startswith("claude-"):
+        # Use the default local model for any Claude model
+        default_model = _MODEL_ALIASES.get("qwen3-coder-30b") or _MODEL_ALIASES.get("qwen")
+        if default_model:
+            print(f"[patches] Resolved Claude model '{model_id}' -> '{default_model}'")
+            return default_model
+
     return model_id
 
 
