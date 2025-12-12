@@ -107,12 +107,13 @@ export function ChatInput() {
             // Use local path if available, otherwise use model ID
             const modelPath = currentModel.path || currentModel.id;
 
-            // Check if model supports thinking mode (Qwen3 non-coder models only)
-            // Qwen3-Coder models don't use thinking mode
-            const modelName = (modelPath || '').toLowerCase();
-            const isQwen3 = modelName.includes('qwen3') || modelName.includes('qwen-3');
-            const isCoder = modelName.includes('coder');
-            const supportsThinking = isQwen3 && !isCoder;
+            // Check if model supports thinking mode from model capabilities
+            // Capabilities come from model config files (tokenizer_config.json has <think> token)
+            let supportsThinking = false;
+            if (currentModel.capabilities?.supports_thinking) {
+                supportsThinking = true;
+                console.log('[ChatInput] Model supports thinking mode:', currentModel.name);
+            }
 
             if (settings.streamEnabled) {
                 let firstChunk = true;

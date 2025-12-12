@@ -221,6 +221,9 @@ export const endpoints = {
     // Local models
     localModels: () => api.get('/api/models/local'),
 
+    // Model capabilities (thinking mode, tools support, etc.)
+    modelCapabilities: (modelPath) => api.get(`/api/models/capabilities?model_path=${encodeURIComponent(modelPath)}`),
+
     // Model aliases
     aliases: () => api.get('/api/aliases'),
     addAlias: (alias, modelPath) => api.post('/api/aliases', { alias, model_path: modelPath }),

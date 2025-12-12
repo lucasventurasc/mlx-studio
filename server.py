@@ -736,9 +736,76 @@ def get_recent_logs():
 # Model Management Endpoints
 # =============================================================================
 
+def _get_model_capabilities(model_path: str) -> dict:
+    """Get model capabilities by reading config files."""
+    from pathlib import Path
+
+    path = Path(model_path)
+    capabilities = {
+        "supports_thinking": False,
+        "model_family": None,
+        "has_tools": False,
+        "context_length": None
+    }
+
+    if not path.exists():
+        return capabilities
+
+    # Check tokenizer_config.json for think tokens
+    tokenizer_config = path / "tokenizer_config.json"
+    if tokenizer_config.exists():
+        try:
+            with open(tokenizer_config) as f:
+                config = json.load(f)
+
+            # Check for <think> token in added_tokens_decoder
+            added_tokens = config.get("added_tokens_decoder", {})
+            for token_info in added_tokens.values():
+                content = token_info.get("content", "")
+                if content == "<think>":
+                    capabilities["supports_thinking"] = True
+                    break
+
+            # Also check chat_template for enable_thinking variable
+            chat_template = config.get("chat_template", "")
+            if "enable_thinking" in chat_template:
+                capabilities["supports_thinking"] = True
+        except Exception:
+            pass
+
+    # Check config.json for model family and context length
+    model_config = path / "config.json"
+    if model_config.exists():
+        try:
+            with open(model_config) as f:
+                config = json.load(f)
+
+            # Detect model family from architectures
+            architectures = config.get("architectures", [])
+            model_type = config.get("model_type", "")
+
+            if "Qwen3" in str(architectures) or "qwen3" in model_type.lower():
+                capabilities["model_family"] = "qwen3"
+            elif "Qwen2" in str(architectures) or "qwen2" in model_type.lower():
+                capabilities["model_family"] = "qwen2"
+            elif "Llama" in str(architectures) or "llama" in model_type.lower():
+                capabilities["model_family"] = "llama"
+            elif "Mistral" in str(architectures) or "mistral" in model_type.lower():
+                capabilities["model_family"] = "mistral"
+            else:
+                capabilities["model_family"] = model_type or "unknown"
+
+            # Get context length
+            capabilities["context_length"] = config.get("max_position_embeddings") or config.get("max_seq_len")
+        except Exception:
+            pass
+
+    return capabilities
+
+
 @app.get("/api/models/local")
 def list_local_models():
-    """List all MLX models downloaded locally."""
+    """List all MLX models downloaded locally with capabilities."""
     models = model_manager.list_local_models()
     return {
         "models": [
@@ -748,7 +815,8 @@ def list_local_models():
                 "size": m.size_human,
                 "size_bytes": m.size_bytes,
                 "quantization": m.quantization,
-                "path": m.path
+                "path": m.path,
+                "capabilities": _get_model_capabilities(m.path)
             }
             for m in models
         ],
@@ -969,6 +1037,23 @@ def get_model_info(author: str, model: str):
     if info:
         return info
     return {"error": "Model not found", "repo_id": repo_id}
+
+
+@app.get("/api/models/capabilities")
+def get_model_capabilities(model_path: str):
+    """Get model capabilities by reading config files.
+
+    Detects:
+    - supports_thinking: Whether model has <think> tokens in tokenizer
+    - model_family: Detected model family (qwen3, qwen2.5, llama, etc.)
+    """
+    from pathlib import Path
+
+    path = Path(model_path)
+    if not path.exists():
+        return {"error": "Model path not found", "path": model_path}
+
+    return _get_model_capabilities(model_path)
 
 
 @app.post("/api/models/download")
