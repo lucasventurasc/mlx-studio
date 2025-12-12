@@ -80,9 +80,13 @@ export function ChatInput() {
             // Use local path if available, otherwise use model ID
             const modelPath = currentModel.path || currentModel.id;
 
+            // Check if model supports thinking mode (Qwen3 models)
+            const modelName = (modelPath || '').toLowerCase();
+            const supportsThinking = modelName.includes('qwen3') || modelName.includes('qwen-3');
+
             if (settings.streamEnabled) {
                 let firstChunk = true;
-                await endpoints.chatStream({
+                const requestBody = {
                     model: modelPath,
                     messages: messagesWithSystem,
                     temperature: settings.temperature ?? 0.7,
@@ -90,7 +94,14 @@ export function ChatInput() {
                     top_p: settings.topP ?? 0.9,
                     max_kv_size: settings.contextLength ?? 32768,
                     stream_options: { include_usage: true }
-                },
+                };
+
+                // Add thinking mode for supported models
+                if (supportsThinking) {
+                    requestBody.extra_body = { enable_thinking: true };
+                }
+
+                await endpoints.chatStream(requestBody,
                 // onChunk callback
                 (delta) => {
                     if (firstChunk) {
@@ -107,7 +118,7 @@ export function ChatInput() {
                     finalStats = stats;
                 });
             } else {
-                const result = await endpoints.chat({
+                const requestBody = {
                     model: modelPath,
                     messages: messagesWithSystem,
                     temperature: settings.temperature ?? 0.7,
@@ -115,7 +126,14 @@ export function ChatInput() {
                     top_p: settings.topP ?? 0.9,
                     max_kv_size: settings.contextLength ?? 32768,
                     stream: false
-                });
+                };
+
+                // Add thinking mode for supported models
+                if (supportsThinking) {
+                    requestBody.extra_body = { enable_thinking: true };
+                }
+
+                const result = await endpoints.chat(requestBody);
                 responseText = result.choices[0].message.content;
                 finalStats = {
                     tokens: result.usage?.completion_tokens || 0,
