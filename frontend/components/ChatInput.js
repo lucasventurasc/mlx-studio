@@ -89,9 +89,7 @@ export function ChatInput() {
                     max_tokens: settings.maxTokens ?? 4096,
                     top_p: settings.topP ?? 0.9,
                     max_kv_size: settings.contextLength ?? 32768,
-                    extra_body: {
-                        enable_thinking: settings.enableThinking ?? true
-                    }
+                    stream_options: { include_usage: true }
                 },
                 // onChunk callback
                 (delta) => {
@@ -116,9 +114,6 @@ export function ChatInput() {
                     max_tokens: settings.maxTokens ?? 4096,
                     top_p: settings.topP ?? 0.9,
                     max_kv_size: settings.contextLength ?? 32768,
-                    extra_body: {
-                        enable_thinking: settings.enableThinking ?? true
-                    },
                     stream: false
                 });
                 responseText = result.choices[0].message.content;
