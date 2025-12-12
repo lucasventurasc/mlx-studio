@@ -34,6 +34,7 @@ git clone https://github.com/yourusername/mlx-studio.git
 cd mlx-studio
 
 # Install dependencies (requires Python 3.12 and optionally Rust)
+# Note: Python 3.14 is not yet supported due to grpcio compatibility issues
 make install
 
 # Run server
@@ -48,9 +49,17 @@ Server will be available at:
 ## Requirements
 
 - macOS with Apple Silicon (M1/M2/M3/M4)
-- Python 3.12 (recommended)
+- Python 3.12 (required - Python 3.14 not yet supported)
 - Rust (optional, for some dependencies)
 - ~16GB+ RAM recommended for larger models
+
+### Installing Python 3.12
+
+If you have Python 3.14 or need to install Python 3.12:
+
+```bash
+brew install python@3.12
+```
 
 ## API Usage
 
@@ -126,6 +135,29 @@ mlx-studio/
 │   └── update-vendor.sh  # Update mlx-omni-server
 └── Makefile
 ```
+
+## Building Standalone Package
+
+To create a standalone package for distribution:
+
+```bash
+make build-app
+```
+
+This creates a ZIP file (e.g., `mlx-studio-1.0.0-arm64.zip`) in the `build/` directory that includes all dependencies and can be shared with users.
+
+Users can then:
+1. Download the ZIP file
+2. Unzip it: `unzip mlx-studio-1.0.0-arm64.zip`
+3. Enter the directory: `cd mlx-studio-1.0.0-arm64`
+4. Run: `./run.sh`
+
+The server will be available at `http://localhost:1234`
+
+**Automatic Building on Release:**
+When you push a tag (e.g., `git tag v1.0.0 && git push --tags`), GitHub Actions automatically builds the package and uploads it to the release page.
+
+**Note**: Building requires approximately 5GB of disk space and takes a few minutes to download all dependencies.
 
 ## Updating mlx-omni-server
 

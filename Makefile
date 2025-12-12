@@ -57,6 +57,10 @@ clean:
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
 	find . -type f -name ".coverage" -delete 2>/dev/null || true
 
+# Build macOS app bundle
+build-app:
+	./scripts/build-app.sh
+
 # Help
 help:
 	@echo "MLX Studio - Makefile commands"
@@ -66,5 +70,6 @@ help:
 	@echo "  make backend       - Run MLX Studio only (port 1234, no LiteLLM)"
 	@echo "  make litellm       - Run LiteLLM proxy only (port 4000)"
 	@echo "  make stop          - Stop all services"
+	@echo "  make build-app     - Build macOS DMG installer"
 	@echo "  make update-vendor - Update mlx-omni-server from upstream"
 	@echo "  make clean         - Clean cache files"
