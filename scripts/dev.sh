@@ -8,6 +8,9 @@ cd "$SCRIPT_DIR"
 PYTHON="./venv-omni/bin/python"
 LITELLM="./venv-omni/bin/litellm"
 
+# Disable DATABASE_URL to prevent Prisma errors when not using database
+unset DATABASE_URL
+
 cleanup() {
     echo ""
     echo "Stopping services..."

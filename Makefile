@@ -12,7 +12,8 @@ install:
 	python3.12 -m venv venv-omni || python3 -m venv venv-omni
 	$(PIP) install --upgrade pip
 	PATH="$(HOME)/.cargo/bin:$(PATH)" $(PIP) install mlx-omni-server || $(PIP) install mlx-omni-server --no-deps
-	$(PIP) install fastapi uvicorn mlx-lm rich sse-starlette python-multipart pydantic tiktoken huggingface_hub litellm
+	$(PIP) install 'litellm[proxy]'
+	$(PIP) install --upgrade 'fastapi>=0.116.1,<0.117' 'uvicorn>=0.34.0,<0.35' 'python-multipart>=0.0.20,<0.0.21' 'rich>=13.9.4' 'soundfile>=0.13.1'
 	@echo "✅ Installation complete"
 
 # Run server (backend + frontend + LiteLLM)
