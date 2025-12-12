@@ -5,7 +5,8 @@ import { endpoints } from '../utils/api.js';
 import {
     BrainIcon, SettingsIcon, ChatIcon, PackageIcon,
     LockIcon, GlobeIcon, ChevronDownIcon, ColumnsIcon,
-    SearchIcon, EjectIcon, MenuIcon, XIcon, TagIcon, CheckIcon
+    SearchIcon, EjectIcon, MenuIcon, XIcon, TagIcon, CheckIcon,
+    MicrophoneIcon
 } from './Icons.js';
 
 // Easter egg: Matrix rain animation
@@ -307,6 +308,9 @@ export function TopBar() {
             <div class="topbar-actions topbar-actions-desktop">
                 <${ApiBadge} networkMode=${networkMode} networkAddresses=${networkAddresses} onClick=${actions.openNetworkModal} />
                 <${StatusPill} connected=${connected} loading=${loading} />
+                <button class="btn btn-icon" onClick=${actions.toggleVoiceMode} title="Voice Mode">
+                    <${MicrophoneIcon} size=${18} />
+                </button>
                 <button class="btn btn-icon" onClick=${actions.openModelComparator} title="Compare Models">
                     <${ColumnsIcon} size=${18} />
                 </button>
@@ -333,6 +337,10 @@ export function TopBar() {
                         <div class="topbar-menu-item" onClick=${() => { actions.toggleChats(); setMenuOpen(false); }}>
                             <${ChatIcon} size=${16} />
                             <span>Chats</span>
+                        </div>
+                        <div class="topbar-menu-item" onClick=${() => { actions.toggleVoiceMode(); setMenuOpen(false); }}>
+                            <${MicrophoneIcon} size=${16} />
+                            <span>Voice Mode</span>
                         </div>
                         <div class="topbar-menu-item" onClick=${() => { actions.openModelComparator(); setMenuOpen(false); }}>
                             <${ColumnsIcon} size=${16} />

@@ -73,6 +73,10 @@ from fastapi.staticfiles import StaticFiles
 from mlx_omni_server.chat.openai.router import router as openai_router
 from mlx_omni_server.chat.anthropic.router import router as anthropic_router
 
+# Import audio routers (STT/TTS)
+from mlx_omni_server.stt import stt as stt_router
+from mlx_omni_server.tts import tts as tts_router
+
 # Import our extensions
 from extensions import KVCacheManager, InferenceProfiles, ModelManager
 from extensions.global_settings import get_global_settings
@@ -186,6 +190,87 @@ app.add_middleware(
 # Mount mlx-omni-server routers
 app.include_router(openai_router, tags=["OpenAI"])
 app.include_router(anthropic_router, prefix="/anthropic", tags=["Anthropic"])
+
+# Mount audio routers (STT/TTS for Voice Mode)
+app.include_router(stt_router.router, tags=["Audio"])
+app.include_router(tts_router.router, tags=["Audio"])
+
+# =============================================================================
+# Edge TTS (Microsoft Neural Voices - High Quality, Free)
+# =============================================================================
+
+import subprocess
+import tempfile
+
+EDGE_TTS_VOICES = {
+    # Portuguese - Brazil
+    "pt-BR-FranciscaNeural": "Francisca (Brazil, Female)",
+    "pt-BR-AntonioNeural": "Antonio (Brazil, Male)",
+    "pt-BR-ThalitaMultilingualNeural": "Thalita (Brazil, Female, Multilingual)",
+    # Portuguese - Portugal
+    "pt-PT-RaquelNeural": "Raquel (Portugal, Female)",
+    "pt-PT-DuarteNeural": "Duarte (Portugal, Male)",
+    # English - US
+    "en-US-JennyNeural": "Jenny (US, Female)",
+    "en-US-GuyNeural": "Guy (US, Male)",
+    "en-US-AriaNeural": "Aria (US, Female)",
+    "en-US-DavisNeural": "Davis (US, Male)",
+    # English - UK
+    "en-GB-SoniaNeural": "Sonia (UK, Female)",
+    "en-GB-RyanNeural": "Ryan (UK, Male)",
+    # Spanish
+    "es-ES-ElviraNeural": "Elvira (Spain, Female)",
+    "es-MX-DaliaNeural": "Dalia (Mexico, Female)",
+    # French
+    "fr-FR-DeniseNeural": "Denise (France, Female)",
+    # German
+    "de-DE-KatjaNeural": "Katja (Germany, Female)",
+    # Italian
+    "it-IT-ElsaNeural": "Elsa (Italy, Female)",
+    # Japanese
+    "ja-JP-NanamiNeural": "Nanami (Japan, Female)",
+    # Chinese
+    "zh-CN-XiaoxiaoNeural": "Xiaoxiao (China, Female)",
+}
+
+class EdgeTTSRequest(BaseModel):
+    input: str
+    voice: str = "pt-BR-FranciscaNeural"
+    rate: str = "+0%"  # Speed adjustment: -50% to +100%
+
+@app.get("/api/tts/edge/voices")
+def get_edge_tts_voices():
+    """Get available Edge TTS voices."""
+    return {"voices": EDGE_TTS_VOICES}
+
+@app.post("/api/tts/edge")
+async def edge_tts(request: EdgeTTSRequest):
+    """
+    Generate speech using Microsoft Edge TTS.
+    High-quality neural voices, requires internet.
+    """
+    try:
+        import edge_tts
+
+        # Create temp file for output
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+            output_path = f.name
+
+        # Generate speech
+        communicate = edge_tts.Communicate(request.input, request.voice, rate=request.rate)
+        await communicate.save(output_path)
+
+        # Return audio file
+        return FileResponse(
+            output_path,
+            media_type="audio/mpeg",
+            filename="speech.mp3"
+        )
+    except ImportError:
+        return {"error": "edge-tts not installed. Run: pip install edge-tts"}
+    except Exception as e:
+        logger.error(f"Edge TTS error: {e}")
+        return {"error": str(e)}
 
 
 # =============================================================================
@@ -530,6 +615,13 @@ def add_remote(config: RemoteConfig):
     url = config.url.strip()
     if not url.startswith("http://") and not url.startswith("https://"):
         url = "http://" + url
+
+    # Add default port if not specified
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    if not parsed.port:
+        url = f"{parsed.scheme}://{parsed.netloc}:1234{parsed.path}"
+        logger.info(f"Added default port 1234 to remote URL: {url}")
 
     remotes.append({
         "name": config.name,

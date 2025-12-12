@@ -16,6 +16,7 @@ import { ModelBrowser } from './components/ModelBrowser.js';
 import { CommandPalette } from './components/CommandPalette.js';
 import { NetworkModal } from './components/NetworkModal.js';
 import { ModelComparator } from './components/ModelComparator.js';
+import { VoiceMode } from './components/VoiceMode.js';
 
 // Offline screen component
 function OfflineScreen() {
@@ -47,7 +48,10 @@ function OfflineScreen() {
 }
 
 export function App() {
-    const { connected } = useStore(s => ({ connected: s.connected }));
+    const { connected, showVoiceMode } = useStore(s => ({
+        connected: s.connected,
+        showVoiceMode: s.showVoiceMode
+    }));
 
     // Initialize theme and load models on mount
     useEffect(() => {
@@ -118,6 +122,16 @@ export function App() {
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
     }, []);
+
+    // If Voice Mode is active, show only Voice Mode
+    if (showVoiceMode) {
+        return html`
+            <div class="app-layout">
+                <${VoiceMode} />
+                <div class="toast" id="toast"></div>
+            </div>
+        `;
+    }
 
     return html`
         <div class="app-layout">

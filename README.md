@@ -31,6 +31,7 @@ Open http://localhost:1234 for the web UI.
 | **Remote Instances** | ❌ | ✅ |
 | **Web UI** | ❌ | ✅ |
 | **Real-time Logs** | ❌ | ✅ |
+| **Voice Mode** | ❌ | ✅ |
 
 ### Smart Prompt Cache
 
@@ -65,6 +66,26 @@ codestral → mlx-community/Codestral-22B-v0.1-4bit
 ### Remote Instances
 
 Route requests to other MLX Studio instances on your network. Run a bigger model on your Mac Studio, use it from your MacBook.
+
+### Voice Mode
+
+Real-time voice conversations with local models. Speak to your AI, get spoken responses.
+
+**Features:**
+- **Speech-to-Text**: Whisper models for transcription
+- **Text-to-Speech**: Multiple TTS engines (Kokoro, Marvis, Edge TTS)
+- **Voice Activity Detection**: Hands-free conversation mode
+- **Streaming TTS**: Responses start playing as they're generated
+- **Portuguese & English**: Full support for both languages
+
+**TTS Models:**
+| Model | Quality | Languages | Speed |
+|-------|---------|-----------|-------|
+| Kokoro 82M | Good | PT-BR, EN | Fast |
+| Marvis 250M | Best | EN only | Medium |
+| Edge TTS | Good | Many | Online |
+
+Click the microphone icon in the web UI to start a voice conversation.
 
 ## Using with Claude Code
 
