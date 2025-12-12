@@ -40,17 +40,76 @@ mkdir -p app
 cp "$SCRIPT_DIR/server.py" app/
 cp "$SCRIPT_DIR/patches.py" app/ 2>/dev/null || true
 cp "$SCRIPT_DIR/litellm_config.yaml" app/
+cp "$SCRIPT_DIR/model_aliases.json" app/ 2>/dev/null || true
+cp "$SCRIPT_DIR/claude_routing.json" app/ 2>/dev/null || true
 cp -r "$SCRIPT_DIR/extensions" app/ 2>/dev/null || true
-cp -r "$SCRIPT_DIR/frontend/dist" app/frontend-dist 2>/dev/null || mkdir -p app/frontend-dist
+cp -r "$SCRIPT_DIR/frontend" app/ 2>/dev/null || true
+cp -r "$SCRIPT_DIR/vendor" app/ 2>/dev/null || true
 
-# Create launcher script
+# Create launcher script that starts both MLX Studio and LiteLLM
 echo "Creating launcher script..."
 cat > run.sh << 'LAUNCHER'
 #!/bin/bash
+# Start MLX Studio + LiteLLM together
+# Ctrl+C stops both services
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
-export DATABASE_URL=""
-exec ./bin/python app/server.py "$@"
+
+PYTHON="./bin/python"
+LITELLM="./bin/litellm"
+
+# Disable DATABASE_URL to prevent Prisma errors
+unset DATABASE_URL
+
+cleanup() {
+    echo ""
+    echo "Stopping services..."
+    kill $SERVER_PID 2>/dev/null
+    kill $LITELLM_PID 2>/dev/null
+    wait $SERVER_PID 2>/dev/null
+    wait $LITELLM_PID 2>/dev/null
+    echo "Done"
+    exit 0
+}
+
+trap cleanup SIGINT SIGTERM
+
+echo "Starting MLX Studio..."
+echo ""
+
+# Start MLX Studio server
+cd app
+$SCRIPT_DIR/$PYTHON server.py --port 1234 &
+SERVER_PID=$!
+cd "$SCRIPT_DIR"
+
+sleep 2
+
+# Start LiteLLM proxy if config exists
+if [ -f "app/litellm_config.yaml" ]; then
+    echo "Starting LiteLLM proxy..."
+    $LITELLM --config app/litellm_config.yaml --port 4000 &
+    LITELLM_PID=$!
+fi
+
+echo ""
+echo "===================="
+echo "MLX Studio: http://localhost:1234"
+if [ -n "$LITELLM_PID" ]; then
+    echo "LiteLLM:    http://localhost:4000"
+fi
+echo "===================="
+echo ""
+echo "Press Ctrl+C to stop all services"
+echo ""
+
+# Wait for processes
+if [ -n "$LITELLM_PID" ]; then
+    wait $SERVER_PID $LITELLM_PID
+else
+    wait $SERVER_PID
+fi
 LAUNCHER
 chmod +x run.sh
 
