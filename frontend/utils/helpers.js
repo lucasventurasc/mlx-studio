@@ -31,8 +31,35 @@ export function copyToClipboard(text) {
     return navigator.clipboard.writeText(text);
 }
 
+// Clean special tokens from model output
+export function cleanModelOutput(text) {
+    if (!text) return text;
+
+    // Remove common special tokens that may leak through
+    const specialTokens = [
+        /<\|endoftext\|>/g,
+        /<\|im_start\|>/g,
+        /<\|im_end\|>/g,
+        /<\|end\|>/g,
+        /<\|eot_id\|>/g,
+        /<\|start_header_id\|>.*?<\|end_header_id\|>/gs,
+        /Human:/g,  // Leaked role markers
+        /Assistant:/g,
+    ];
+
+    let cleaned = text;
+    for (const token of specialTokens) {
+        cleaned = cleaned.replace(token, '');
+    }
+
+    return cleaned.trim();
+}
+
 // Parse thinking blocks and regular content from response
 export function parseThinkingContent(text) {
+    // First clean any special tokens
+    text = cleanModelOutput(text);
+
     const thinkRegex = /<think>([\s\S]*?)<\/think>/g;
     const parts = [];
     let lastIndex = 0;
@@ -69,6 +96,7 @@ export function parseThinkingContent(text) {
 
 // Check if response is still in thinking phase (has unclosed think tag)
 export function isStillThinking(text) {
+    if (!text) return false;
     const openTags = (text.match(/<think>/g) || []).length;
     const closeTags = (text.match(/<\/think>/g) || []).length;
     return openTags > closeTags;
@@ -76,6 +104,7 @@ export function isStillThinking(text) {
 
 // Get current thinking content (inside unclosed think tag)
 export function getCurrentThinking(text) {
+    if (!text) return null;
     const lastOpenIndex = text.lastIndexOf('<think>');
     if (lastOpenIndex === -1) return null;
 
@@ -84,7 +113,7 @@ export function getCurrentThinking(text) {
 
     if (closeIndex === -1) {
         // Unclosed - still thinking
-        return afterOpen;
+        return cleanModelOutput(afterOpen);
     }
     return null;
 }
