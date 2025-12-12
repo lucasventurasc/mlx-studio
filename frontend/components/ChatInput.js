@@ -107,9 +107,12 @@ export function ChatInput() {
             // Use local path if available, otherwise use model ID
             const modelPath = currentModel.path || currentModel.id;
 
-            // Check if model supports thinking mode (Qwen3 models)
+            // Check if model supports thinking mode (Qwen3 non-coder models only)
+            // Qwen3-Coder models don't use thinking mode
             const modelName = (modelPath || '').toLowerCase();
-            const supportsThinking = modelName.includes('qwen3') || modelName.includes('qwen-3');
+            const isQwen3 = modelName.includes('qwen3') || modelName.includes('qwen-3');
+            const isCoder = modelName.includes('coder');
+            const supportsThinking = isQwen3 && !isCoder;
 
             if (settings.streamEnabled) {
                 let firstChunk = true;
