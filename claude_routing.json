@@ -2,9 +2,9 @@
   "enabled": true,
   "tiers": {
     "haiku": {
-      "model": "/Users/lucasventura/.lmstudio/models/mlx-community/Qwen3-1.7B-4bit",
+      "model": "/Users/lucasventura/.lmstudio/models/unsloth/gpt-oss-20b-GGUF/gpt-oss-20b-Q4_K_M.gguf",
       "draft_model": "",
-      "backend": "mlx"
+      "backend": "gguf"
     },
     "sonnet": {
       "model": "/Users/lucasventura/.lmstudio/models/unsloth/gpt-oss-20b-GGUF/gpt-oss-20b-Q4_K_M.gguf",

@@ -219,6 +219,37 @@ export function GGUFTab() {
                 </div>
             </section>
 
+            <!-- Context Warning -->
+            <section class="settings-card">
+                <h3 class="settings-card-title">Context Warning</h3>
+                <p class="settings-card-desc">
+                    Warns when context is near the limit. User should run /compact (Claude) or /compress (Qwen).
+                </p>
+
+                <div class="settings-grid">
+                    <div class="setting-row">
+                        <${SettingLabel}
+                            label="Warning Threshold"
+                            hint="Show warning when context usage exceeds this percentage"
+                        />
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <input
+                                type="range"
+                                style="width: 100px;"
+                                min="50"
+                                max="90"
+                                step="5"
+                                value=${config?.context_warning_threshold || 75}
+                                onInput=${e => handleConfigChange('context_warning_threshold', parseInt(e.target.value))}
+                            />
+                            <span style="font-family: monospace; font-size: 13px;">
+                                ${config?.context_warning_threshold || 75}%
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <!-- Speculative Decoding -->
             <section class="settings-card">
                 <h3 class="settings-card-title">Speculative Decoding</h3>

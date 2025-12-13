@@ -115,6 +115,7 @@ IMPORTANT TOOL USE GUIDELINES:
             openai_messages.append({"role": "system", "content": system_content})
 
         # Convert input messages
+        logger.debug(f"Converting {len(messages)} Anthropic messages to OpenAI format")
         for msg in messages:
             # Handle system messages in the messages array
             if msg.role.value == "system":
@@ -186,6 +187,15 @@ IMPORTANT TOOL USE GUIDELINES:
                     openai_msg["tool_calls"] = tool_calls
 
             openai_messages.append(openai_msg)
+
+        # Log converted messages for debugging
+        logger.info(f"GGUF Anthropic->OpenAI: Converted {len(messages)} Anthropic msgs to {len(openai_messages)} OpenAI msgs")
+        for i, m in enumerate(openai_messages[-5:]):  # Last 5 messages
+            role = m.get('role', '?')
+            content_preview = str(m.get('content', ''))[:80] if m.get('content') else '<null>'
+            has_tools = 'tool_calls' in m
+            tool_id = m.get('tool_call_id', '')
+            logger.info(f"  msg[{len(openai_messages)-5+i}] {role}: '{content_preview}' tool_calls={has_tools} tool_call_id={tool_id}")
 
         return openai_messages
 
@@ -476,6 +486,33 @@ IMPORTANT TOOL USE GUIDELINES:
         messages = self._convert_system_to_messages(request.system, request.messages)
         tools = self._convert_tools_to_openai(request.tools)
 
+        # Check context usage and warn if too high
+        context_warning = None
+        try:
+            from extensions.auto_compact import check_context_warning
+            from extensions.gguf_backend import load_gguf_config
+
+            gguf_config = load_gguf_config()
+
+            # Extract context size from default_args
+            ctx_size = 32768
+            args = gguf_config.get("default_args", [])
+            for i, arg in enumerate(args):
+                if arg in ("-c", "--ctx-size") and i + 1 < len(args):
+                    ctx_size = int(args[i + 1])
+                    break
+
+            warning_config = {
+                "context_limit": ctx_size,
+                "threshold_percent": gguf_config.get("context_warning_threshold", 75),
+            }
+
+            context_warning = check_context_warning(
+                messages, tools, request.max_tokens, warning_config
+            )
+        except Exception as e:
+            logger.warning(f"Context warning check failed: {e}")
+
         # Get sampler settings
         try:
             from extensions.global_settings import get_global_settings
@@ -515,6 +552,28 @@ IMPORTANT TOOL USE GUIDELINES:
         finish_reason = "stop"
         prompt_tokens = 0
         completion_tokens = 0
+
+        # Track streaming tool calls from llama-server
+        streaming_tool_calls = {}  # index -> {id, name, arguments}
+
+        # Emit context warning if needed (before model response)
+        if context_warning and context_warning.should_warn:
+            yield MessageStreamEvent(
+                type=StreamEventType.CONTENT_BLOCK_START,
+                index=current_block_index,
+                content_block=TextBlock(text=""),
+            )
+            yield MessageStreamEvent(
+                type=StreamEventType.CONTENT_BLOCK_DELTA,
+                index=current_block_index,
+                delta=StreamDelta(type="text_delta", text=context_warning.warning_message + "\n\n"),
+            )
+            yield MessageStreamEvent(
+                type=StreamEventType.CONTENT_BLOCK_STOP,
+                index=current_block_index,
+            )
+            current_block_index += 1
+            text_block_started = False  # Reset for actual response
 
         # Stream from llama-server
         try:
@@ -571,7 +630,7 @@ IMPORTANT TOOL USE GUIDELINES:
 
                 # Get both content types
                 # - content: regular response content (shown to user)
-                # - reasoning_content: internal "thinking" (gpt-oss style, NOT shown to user)
+                # - reasoning_content: some models (gpt-oss) put main response here
                 content_delta = delta.get("content", "")
                 reasoning_delta = delta.get("reasoning_content", "")
 
@@ -580,16 +639,34 @@ IMPORTANT TOOL USE GUIDELINES:
                 if finish:
                     finish_reason = finish
 
-                # Accumulate reasoning for tool parsing (but don't stream it)
-                if reasoning_delta:
-                    accumulated_text += reasoning_delta
+                # Handle streaming tool calls from llama-server
+                delta_tool_calls = delta.get("tool_calls", [])
+                for tc in delta_tool_calls:
+                    idx = tc.get("index", 0)
+                    if idx not in streaming_tool_calls:
+                        streaming_tool_calls[idx] = {
+                            "id": tc.get("id", f"toolu_{uuid.uuid4().hex[:24]}"),
+                            "name": "",
+                            "arguments": ""
+                        }
+                    if tc.get("id"):
+                        streaming_tool_calls[idx]["id"] = tc["id"]
+                    func = tc.get("function", {})
+                    if func.get("name"):
+                        streaming_tool_calls[idx]["name"] = func["name"]
+                    if func.get("arguments"):
+                        streaming_tool_calls[idx]["arguments"] += func["arguments"]
 
-                # Only stream actual content (not reasoning/thinking)
-                if not content_delta:
+                # For gpt-oss and similar models, reasoning_content IS the main response
+                # If we have reasoning but no content, treat reasoning as content
+                effective_delta = content_delta or reasoning_delta
+
+                # Skip if no text content (but we may have tool_calls)
+                if not effective_delta:
                     continue
 
-                # Accumulate content for tool parsing too
-                accumulated_text += content_delta
+                # Accumulate for tool parsing
+                accumulated_text += effective_delta
 
                 # Check for tool call XML
                 if "<function=" in accumulated_text or "<tool_call>" in accumulated_text:
@@ -608,11 +685,11 @@ IMPORTANT TOOL USE GUIDELINES:
                     )
                     text_block_started = True
 
-                # Stream text delta
+                # Stream text delta (use effective_delta which may come from content or reasoning_content)
                 yield MessageStreamEvent(
                     type=StreamEventType.CONTENT_BLOCK_DELTA,
                     index=current_block_index,
-                    delta=StreamDelta(type="text_delta", text=content_delta),
+                    delta=StreamDelta(type="text_delta", text=effective_delta),
                 )
         except Exception as e:
             # Handle disconnection during streaming (e.g., llama-server restart)
@@ -647,15 +724,34 @@ IMPORTANT TOOL USE GUIDELINES:
             )
             current_block_index += 1
 
-        # Parse tool calls from accumulated text
+        # Get tool calls - prefer structured tool_calls from llama-server over XML parsing
         tool_calls = []
-        if accumulated_text:
+        if streaming_tool_calls:
+            # Use structured tool calls from llama-server
+            for idx in sorted(streaming_tool_calls.keys()):
+                tc = streaming_tool_calls[idx]
+                if tc["name"] and tc["arguments"]:
+                    try:
+                        args = json.loads(tc["arguments"])
+                    except json.JSONDecodeError:
+                        logger.warning(f"Failed to parse tool call arguments: {tc['arguments']}")
+                        args = {}
+                    tool_calls.append(type('ToolCall', (), {
+                        'id': tc["id"],
+                        'name': tc["name"],
+                        'arguments': args
+                    })())
+            logger.info(f"GGUF received {len(tool_calls)} structured tool calls from llama-server")
+        elif accumulated_text:
+            # Fallback: parse tool calls from XML in text
             parsed = self._parse_tool_calls(accumulated_text)
             for tc in parsed:
                 tool_calls.append(tc)
-            logger.info(f"GGUF parsed {len(tool_calls)} tool calls from accumulated text")
-        else:
-            logger.warning("GGUF stream produced no accumulated text - model may have generated empty response")
+            if parsed:
+                logger.info(f"GGUF parsed {len(tool_calls)} tool calls from XML in text")
+
+        if not accumulated_text and not tool_calls:
+            logger.warning("GGUF stream produced no content and no tool calls - potential empty response")
 
         # If we have tool calls but never started a text block, emit an empty one first
         # This ensures the response always has at least some content before tools
