@@ -624,8 +624,20 @@ function StatusPill({ connected, loading }) {
 
 function ApiBadge({ networkMode, networkAddresses, onClick }) {
     const isNetwork = networkMode === 'network';
-    // Get local IP from networkAddresses or fallback to localhost
-    const localIp = networkAddresses?.find(addr => addr && !addr.startsWith('127.')) || '127.0.0.1';
+
+    // Safely extract IP address
+    let localIp = '127.0.0.1';
+
+    if (networkAddresses && Array.isArray(networkAddresses) && networkAddresses.length > 0) {
+        // Look for a non-localhost IP address
+        const nonLocalAddr = networkAddresses.find(addr => addr && addr.ip && typeof addr.ip === 'string' && !addr.ip.startsWith('127.'));
+        if (nonLocalAddr) {
+            localIp = nonLocalAddr.ip;
+        } else {
+            // Fall back to first address if no non-local found
+            localIp = networkAddresses[0].ip || '127.0.0.1';
+        }
+    }
 
     return html`
         <div
