@@ -1,9 +1,9 @@
-// Models Tab - Unified model configuration (routing + aliases)
-const { html, useState, useEffect } = window.preact;
+// Models Tab - Unified model configuration (routing + aliases + per-model settings)
+const { html, useState, useEffect, useCallback } = window.preact;
 import { showToast } from '../../hooks/useStore.js';
 import { endpoints } from '../../utils/api.js';
 import { InfoHint } from '../ui/Tooltip.js';
-import { PlusIcon, TrashIcon } from '../Icons.js';
+import { PlusIcon, TrashIcon, SettingsIcon } from '../Icons.js';
 
 const TIER_INFO = {
     haiku: {
@@ -26,14 +26,32 @@ const TIER_INFO = {
     }
 };
 
+const CONTEXT_OPTIONS = [
+    { value: 8192, label: '8K' },
+    { value: 16384, label: '16K' },
+    { value: 32768, label: '32K' },
+    { value: 65536, label: '64K' },
+    { value: 131072, label: '128K' },
+];
+
+const MAX_TOKENS_OPTIONS = [
+    { value: 2048, label: '2K' },
+    { value: 4096, label: '4K' },
+    { value: 8192, label: '8K' },
+    { value: 16384, label: '16K' },
+    { value: 32000, label: '32K' },
+];
+
 export function ModelsTab() {
     const [config, setConfig] = useState(null);
     const [aliases, setAliases] = useState({});
     const [localModels, setLocalModels] = useState([]);
+    const [modelConfigs, setModelConfigs] = useState({});
     const [loading, setLoading] = useState(true);
     const [newAlias, setNewAlias] = useState('');
     const [selectedModel, setSelectedModel] = useState('');
     const [showAliases, setShowAliases] = useState(false);
+    const [expandedModel, setExpandedModel] = useState(null);
 
     useEffect(() => {
         loadData();
@@ -42,19 +60,40 @@ export function ModelsTab() {
     const loadData = async () => {
         setLoading(true);
         try {
-            const [routingRes, aliasesRes, modelsRes] = await Promise.all([
+            const [routingRes, aliasesRes, modelsRes, configsRes] = await Promise.all([
                 endpoints.routingConfig(),
                 endpoints.aliases(),
                 endpoints.localModels(),
+                endpoints.modelConfigs(),
             ]);
             setConfig(routingRes);
             setAliases(aliasesRes.aliases || {});
             setLocalModels(modelsRes.models || []);
+            setModelConfigs(configsRes.configs || {});
         } catch (e) {
             console.error('Failed to load config:', e);
         }
         setLoading(false);
     };
+
+    const handleModelConfigChange = useCallback(async (modelId, field, value) => {
+        // Optimistic update
+        setModelConfigs(prev => ({
+            ...prev,
+            [modelId]: {
+                ...(prev[modelId] || {}),
+                [field]: value
+            }
+        }));
+
+        try {
+            await endpoints.setModelConfig(modelId, { [field]: value });
+        } catch (e) {
+            showToast('Failed to update model config');
+            // Reload to reset
+            loadData();
+        }
+    }, []);
 
     const handleTierChange = async (tier, model) => {
         const newConfig = { ...config };
@@ -151,6 +190,87 @@ export function ModelsTab() {
                             </select>
                         </div>
                     `)}
+                </div>
+            </section>
+
+            <!-- Model Settings - Per model context/max_tokens -->
+            <section class="settings-card">
+                <h3 class="settings-card-title">
+                    Model Settings
+                    <${InfoHint} text="Configure context window and output limits per model. These settings apply regardless of how the model is accessed (via API, routing, or aliases)." />
+                </h3>
+                <p class="settings-card-desc">
+                    Set context length and max output tokens for each model
+                </p>
+
+                <div class="model-settings-list">
+                    ${localModels.map(model => {
+                        const modelId = model.path || model.id;
+                        const modelConfig = modelConfigs[modelId] || {};
+                        const isExpanded = expandedModel === modelId;
+                        const hasCustomConfig = modelId in modelConfigs;
+
+                        return html`
+                            <div key=${modelId} class="model-settings-row ${isExpanded ? 'expanded' : ''}">
+                                <div
+                                    class="model-settings-header"
+                                    onClick=${() => setExpandedModel(isExpanded ? null : modelId)}
+                                >
+                                    <div class="model-settings-name">
+                                        <span class="model-name-text">${getShortName(modelId)}</span>
+                                        ${hasCustomConfig && html`
+                                            <span class="model-config-badge">configured</span>
+                                        `}
+                                    </div>
+                                    <div class="model-settings-summary">
+                                        <span class="model-stat">
+                                            ${CONTEXT_OPTIONS.find(o => o.value === (modelConfig.context_length || 65536))?.label || '64K'} ctx
+                                        </span>
+                                        <span class="model-stat">
+                                            ${MAX_TOKENS_OPTIONS.find(o => o.value === (modelConfig.max_tokens || 8192))?.label || '8K'} out
+                                        </span>
+                                        <div class="expand-icon ${isExpanded ? 'expanded' : ''}">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <polyline points="6 9 12 15 18 9"/>
+                                            </svg>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                ${isExpanded && html`
+                                    <div class="model-settings-body">
+                                        <div class="model-setting-field">
+                                            <label>Context Length</label>
+                                            <select
+                                                class="model-setting-select"
+                                                value=${modelConfig.context_length || 65536}
+                                                onChange=${e => handleModelConfigChange(modelId, 'context_length', parseInt(e.target.value))}
+                                            >
+                                                ${CONTEXT_OPTIONS.map(opt => html`
+                                                    <option key=${opt.value} value=${opt.value}>${opt.label}</option>
+                                                `)}
+                                            </select>
+                                        </div>
+                                        <div class="model-setting-field">
+                                            <label>Max Output</label>
+                                            <select
+                                                class="model-setting-select"
+                                                value=${modelConfig.max_tokens || 8192}
+                                                onChange=${e => handleModelConfigChange(modelId, 'max_tokens', parseInt(e.target.value))}
+                                            >
+                                                ${MAX_TOKENS_OPTIONS.map(opt => html`
+                                                    <option key=${opt.value} value=${opt.value}>${opt.label}</option>
+                                                `)}
+                                            </select>
+                                        </div>
+                                        <div class="model-setting-path">
+                                            <code>${modelId}</code>
+                                        </div>
+                                    </div>
+                                `}
+                            </div>
+                        `;
+                    })}
                 </div>
             </section>
 

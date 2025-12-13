@@ -36,11 +36,11 @@ export function InferenceTab() {
         actions.updateSettings({ [key]: value });
 
         // Sync inference settings to server (affects Anthropic/Claude Code endpoint too)
-        const inferenceKeys = ['temperature', 'topP', 'topK', 'maxTokens'];
+        const inferenceKeys = ['temperature', 'topP', 'topK', 'maxTokens', 'contextLength'];
         if (inferenceKeys.includes(key)) {
             try {
                 // Map frontend key names to backend key names
-                const keyMap = { topP: 'top_p', topK: 'top_k', maxTokens: 'max_tokens' };
+                const keyMap = { topP: 'top_p', topK: 'top_k', maxTokens: 'max_tokens', contextLength: 'context_length' };
                 const serverKey = keyMap[key] || key;
                 await endpoints.updateInferenceSettings({ [serverKey]: value });
             } catch (e) {
@@ -201,7 +201,7 @@ export function InferenceTab() {
                         min="0"
                         max="16384"
                         step="256"
-                        displayValue=${settings.thinkingBudget ? formatContextSize(settings.thinkingBudget) : 'Unlimited'}
+                        displayValue=${settings.thinkingBudget === 0 ? 'Disabled' : formatContextSize(settings.thinkingBudget)}
                         onChange=${v => updateSetting('thinkingBudget', v)}
                     />
 

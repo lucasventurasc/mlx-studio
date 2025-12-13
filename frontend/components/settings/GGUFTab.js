@@ -216,6 +216,36 @@ export function GGUFTab() {
                             </span>
                         </div>
                     </div>
+
+                    <div class="setting-row">
+                        <${SettingLabel}
+                            label="Enable Thinking"
+                            hint="Allow model to generate reasoning before response. Disable for faster responses (skips ~3K tokens of reasoning per response)."
+                        />
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <select
+                                class="setting-input"
+                                style="width: 140px;"
+                                value=${config?.enable_thinking === true ? 'true' : config?.enable_thinking === false ? 'false' : 'default'}
+                                onChange=${e => {
+                                    const val = e.target.value;
+                                    if (val === 'default') {
+                                        // Remove the key by setting to undefined
+                                        const newConfig = { ...config };
+                                        delete newConfig.enable_thinking;
+                                        setConfig(newConfig);
+                                        endpoints.updateGgufConfig({ enable_thinking: null });
+                                    } else {
+                                        handleConfigChange('enable_thinking', val === 'true');
+                                    }
+                                }}
+                            >
+                                <option value="default">Default (model decides)</option>
+                                <option value="true">Enabled</option>
+                                <option value="false">Disabled (faster)</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
             </section>
 

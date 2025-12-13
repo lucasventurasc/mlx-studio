@@ -2,19 +2,25 @@
   "enabled": true,
   "tiers": {
     "haiku": {
-      "model": "/Users/lucasventura/.lmstudio/models/unsloth/gpt-oss-20b-GGUF/gpt-oss-20b-Q4_K_M.gguf",
+      "model": "/Users/lucasventura/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-8bit",
       "draft_model": "",
-      "backend": "gguf"
+      "backend": "mlx",
+      "context_length": 32768,
+      "max_tokens": 4096
     },
     "sonnet": {
-      "model": "/Users/lucasventura/.lmstudio/models/unsloth/gpt-oss-20b-GGUF/gpt-oss-20b-Q4_K_M.gguf",
+      "model": "/Users/lucasventura/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-8bit",
       "draft_model": "",
-      "backend": "gguf"
+      "backend": "mlx",
+      "context_length": 131072,
+      "max_tokens": 16384
     },
     "opus": {
-      "model": "/Users/lucasventura/.lmstudio/models/mlx-community/Qwen3-4B-4bit",
+      "model": "/Users/lucasventura/.lmstudio/models/lmstudio-community/Qwen2.5-Coder-14B-Instruct-MLX-8bit",
       "draft_model": "",
-      "backend": "mlx"
+      "backend": "mlx",
+      "context_length": 131072,
+      "max_tokens": 32000
     }
   },
   "default_model": null

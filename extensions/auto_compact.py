@@ -136,13 +136,15 @@ def check_context_warning(
     """
     cfg = {**DEFAULT_CONFIG, **(config or {})}
 
-    # Calculate token usage
+    # Calculate token usage (input only, not including max_tokens for output)
     msg_tokens = estimate_messages_tokens(messages)
     tool_tokens = estimate_tools_tokens(tools)
-    total_tokens = msg_tokens + tool_tokens + max_tokens
+    total_tokens = msg_tokens + tool_tokens
 
     context_limit = cfg["context_limit"]
-    usage_percent = int(total_tokens * 100 / context_limit) if context_limit > 0 else 0
+    # Reserve space for output - warn when input takes up too much of the context
+    available_for_input = context_limit - min(max_tokens, context_limit // 2)
+    usage_percent = int(total_tokens * 100 / available_for_input) if available_for_input > 0 else 0
 
     # Warn at threshold (default 75%)
     threshold = cfg["threshold_percent"]
@@ -156,6 +158,6 @@ def check_context_warning(
     return ContextWarning(
         should_warn=should_warn,
         estimated_tokens=total_tokens,
-        context_limit=context_limit,
+        context_limit=available_for_input,  # Show available space, not total limit
         usage_percent=usage_percent,
     )

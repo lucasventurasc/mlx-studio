@@ -28,13 +28,15 @@ class InferenceSettings:
     top_p: float = 0.85
     top_k: int = 30
     max_tokens: int = 8192
+    context_length: int = 131072  # 128K default
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "temperature": self.temperature,
             "top_p": self.top_p,
             "top_k": self.top_k,
-            "max_tokens": self.max_tokens
+            "max_tokens": self.max_tokens,
+            "context_length": self.context_length
         }
 
     @classmethod
@@ -43,7 +45,8 @@ class InferenceSettings:
             temperature=data.get("temperature", 0.7),
             top_p=data.get("top_p", 0.9),
             top_k=data.get("top_k", 40),
-            max_tokens=data.get("max_tokens", 8192)
+            max_tokens=data.get("max_tokens", 8192),
+            context_length=data.get("context_length", 131072)
         )
 
 

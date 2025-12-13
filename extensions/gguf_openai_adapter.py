@@ -60,16 +60,25 @@ class GGUFOpenAIAdapter:
         Returns:
             Normalized chunk compatible with OpenAI schema
         """
-        # Extract tokens_per_second from llama-server's timings field
+        # Extract tokens_per_second and cache stats from llama-server's timings field
         if "timings" in chunk:
             timings = chunk.pop("timings")
             # llama-server returns predicted_per_second in timings
             tps = timings.get("predicted_per_second", 0)
-            if tps and "usage" in chunk:
+            cache_n = timings.get("cache_n", 0)  # Number of cached tokens
+
+            if "usage" not in chunk:
+                chunk["usage"] = {}
+
+            if tps:
                 chunk["usage"]["tokens_per_second"] = round(tps, 1)
-            elif tps:
-                # Create usage if not present
-                chunk["usage"] = {"tokens_per_second": round(tps, 1)}
+
+            # Add cache stats if available (use prompt_tokens_details format for frontend compatibility)
+            if cache_n > 0:
+                chunk["usage"]["cache_read_input_tokens"] = cache_n
+                chunk["usage"]["cache_creation_input_tokens"] = 0
+                # Also add prompt_tokens_details for frontend's cache_hit detection
+                chunk["usage"]["prompt_tokens_details"] = {"cached_tokens": cache_n}
 
         if "choices" not in chunk:
             return chunk

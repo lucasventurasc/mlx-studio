@@ -71,6 +71,9 @@ class TierConfig(BaseModel):
     model: Optional[str] = None
     draft_model: Optional[str] = None
     backend: Optional[str] = "mlx"
+    context_length: Optional[int] = None
+    max_tokens: Optional[int] = None
+    remote: Optional[str] = None
 
 
 class RoutingConfig(BaseModel):
@@ -165,6 +168,58 @@ def set_tier_model(
         "model": model,
         "draft_model": draft_model,
         "backend": final_backend
+    }
+
+
+@router.post("/routing/tier/{tier_name}/config")
+def set_tier_config(tier_name: str, tier_config: TierConfig):
+    """Set full configuration for a specific tier (haiku/sonnet/opus).
+
+    Includes model, draft_model, backend, context_length, and max_tokens.
+    """
+    from patches import reload_routing_config
+
+    config = load_routing_config()
+
+    if tier_name not in ["haiku", "sonnet", "opus"]:
+        return {"status": "error", "message": f"Unknown tier: {tier_name}"}
+
+    # Initialize tier if not exists
+    if tier_name not in config.get("tiers", {}):
+        config["tiers"][tier_name] = {}
+
+    # Update all fields from the config
+    tier = config["tiers"][tier_name]
+
+    if tier_config.model is not None:
+        tier["model"] = tier_config.model
+    if tier_config.draft_model is not None:
+        tier["draft_model"] = tier_config.draft_model
+    if tier_config.context_length is not None:
+        tier["context_length"] = tier_config.context_length
+    if tier_config.max_tokens is not None:
+        tier["max_tokens"] = tier_config.max_tokens
+    if tier_config.remote is not None:
+        tier["remote"] = tier_config.remote
+
+    # Auto-detect backend from model path if not explicitly provided
+    if tier_config.backend:
+        tier["backend"] = tier_config.backend
+    elif tier_config.model:
+        model = tier_config.model
+        if model.lower().endswith(".gguf") or ".gguf" in model.lower():
+            tier["backend"] = "gguf"
+        else:
+            tier["backend"] = "mlx"
+
+    save_routing_config(config)
+    reload_routing_config()
+
+    logger.info(f"Updated {tier_name} config: context={tier.get('context_length')}, max_tokens={tier.get('max_tokens')}")
+    return {
+        "status": "updated",
+        "tier": tier_name,
+        "config": tier
     }
 
 

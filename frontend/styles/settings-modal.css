@@ -1525,6 +1525,137 @@
 
 /* ==================== RESPONSIVE ==================== */
 
+/* ==================== MODEL SETTINGS (Per-model config) ==================== */
+
+.model-settings-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.model-settings-row {
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    transition: all var(--transition-fast);
+}
+
+.model-settings-row:hover {
+    border-color: var(--fg-3);
+}
+
+.model-settings-row.expanded {
+    border-color: var(--accent);
+}
+
+.model-settings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.model-settings-header:hover {
+    background: var(--bg-2);
+}
+
+.model-settings-name {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
+}
+
+.model-name-text {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--fg-0);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.model-config-badge {
+    font-size: 10px;
+    font-weight: 500;
+    padding: 2px 6px;
+    background: var(--accent);
+    color: white;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+.model-settings-summary {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.model-stat {
+    font-size: 12px;
+    color: var(--fg-3);
+    font-family: var(--font-mono);
+    background: var(--bg-3);
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+.model-settings-body {
+    padding: 16px;
+    background: var(--bg-2);
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.model-setting-field {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.model-setting-field label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--fg-1);
+}
+
+.model-setting-select {
+    width: 120px;
+    padding: 8px 12px;
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+    color: var(--fg-0);
+    cursor: pointer;
+}
+
+.model-setting-select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.model-setting-path {
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+}
+
+.model-setting-path code {
+    font-size: 11px;
+    color: var(--fg-3);
+    word-break: break-all;
+}
+
+/* ==================== RESPONSIVE ==================== */
+
 @media (max-width: 768px) {
     .settings-modal {
         max-width: 100%;
@@ -1568,5 +1699,19 @@
 
     .theme-options {
         grid-template-columns: 1fr;
+    }
+
+    .model-settings-summary {
+        display: none;
+    }
+
+    .model-setting-field {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    .model-setting-select {
+        width: 100%;
     }
 }

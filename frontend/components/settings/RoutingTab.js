@@ -122,14 +122,15 @@ export function RoutingTab() {
     const handleTierChange = async (tier, field, value) => {
         const newConfig = { ...config };
         if (!newConfig.tiers[tier]) {
-            newConfig.tiers[tier] = { model: null, draft_model: null, remote: null };
+            newConfig.tiers[tier] = { model: null, draft_model: null, remote: null, context_length: null, max_tokens: null };
         }
-        newConfig.tiers[tier][field] = value || null;
+        // For numeric fields, keep the value; for others, use null if empty
+        newConfig.tiers[tier][field] = (field === 'context_length' || field === 'max_tokens') ? value : (value || null);
         setConfig(newConfig);
 
         try {
             const tierConfig = newConfig.tiers[tier];
-            await endpoints.setTierModel(tier, tierConfig.model, tierConfig.draft_model);
+            await endpoints.setTierConfig(tier, tierConfig);
             showToast(`Updated ${tier} routing`);
         } catch (e) {
             showToast('Failed to update routing');
@@ -306,6 +307,43 @@ export function RoutingTab() {
                                             </select>
                                         </div>
                                     `}
+
+                                    <!-- Context Length -->
+                                    <div class="tier-field">
+                                        <label>
+                                            Context
+                                            <${InfoHint} text="Maximum context window size. Smaller models work better with smaller contexts." />
+                                        </label>
+                                        <select
+                                            class="tier-select"
+                                            value=${config.tiers[tier]?.context_length || (tier === 'haiku' ? 32768 : 131072)}
+                                            onChange=${e => handleTierChange(tier, 'context_length', parseInt(e.target.value))}
+                                        >
+                                            <option value="16384">16K</option>
+                                            <option value="32768">32K</option>
+                                            <option value="65536">64K</option>
+                                            <option value="131072">128K</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- Max Tokens -->
+                                    <div class="tier-field">
+                                        <label>
+                                            Max Output
+                                            <${InfoHint} text="Maximum tokens the model can generate per response." />
+                                        </label>
+                                        <select
+                                            class="tier-select"
+                                            value=${config.tiers[tier]?.max_tokens || (tier === 'haiku' ? 4096 : tier === 'sonnet' ? 16384 : 32000)}
+                                            onChange=${e => handleTierChange(tier, 'max_tokens', parseInt(e.target.value))}
+                                        >
+                                            <option value="2048">2K</option>
+                                            <option value="4096">4K</option>
+                                            <option value="8192">8K</option>
+                                            <option value="16384">16K</option>
+                                            <option value="32000">32K</option>
+                                        </select>
+                                    </div>
                                 </div>
 
                                 ${config.tiers[tier]?.model && html`

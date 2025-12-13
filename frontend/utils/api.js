@@ -242,7 +242,16 @@ export const endpoints = {
     routingConfig: () => api.get('/api/routing/config'),
     setRoutingConfig: (config) => api.post('/api/routing/config', config),
     setTierModel: (tier, model, draftModel) => api.post(`/api/routing/tier/${tier}?model=${encodeURIComponent(model || '')}&draft_model=${encodeURIComponent(draftModel || '')}`),
+    setTierConfig: (tier, config) => api.post(`/api/routing/tier/${tier}/config`, config),
     resolveModel: (modelId) => api.get(`/api/routing/resolve/${encodeURIComponent(modelId)}`),
+
+    // =========================================================================
+    // Per-Model Configurations (context_length, max_tokens per model)
+    // =========================================================================
+    modelConfigs: () => api.get('/api/model-configs'),
+    getModelConfig: (modelId) => api.get(`/api/model-configs/${encodeURIComponent(modelId)}`),
+    setModelConfig: (modelId, config) => api.post(`/api/model-configs/${encodeURIComponent(modelId)}`, config),
+    deleteModelConfig: (modelId) => api.delete(`/api/model-configs/${encodeURIComponent(modelId)}`),
 
     // =========================================================================
     // Server Log Streaming

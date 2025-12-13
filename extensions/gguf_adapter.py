@@ -98,7 +98,16 @@ IMPORTANT TOOL USE GUIDELINES:
 3. NEVER output entire file contents in your response - use Write or Edit tools instead
 4. Break complex tasks into steps using TodoWrite
 5. One tool call at a time, verify each works before proceeding
-6. For Edit: old_string must match EXACTLY (including whitespace)
+6. For Edit: old_string must match EXACTLY (including whitespace) and MUST BE UNIQUE in the file - include enough surrounding context
+7. If a Glob or Grep returns no results or error, try different paths - common structures are: frontend/, src/, app/, components/
+8. Read CLAUDE.md first if available - it contains project structure information
+
+CRITICAL FOR EDIT TOOL:
+- Copy the EXACT text from the Read output, including all spaces and indentation
+- The line numbers shown (e.g., "    80→") are NOT part of the file content - start copying AFTER the arrow
+- If Edit fails with "String to replace not found", re-read the file and copy the text character-by-character
+- Do NOT try to recreate or type the text from memory - always copy from Read output
+- When inserting new code, match the exact indentation style of surrounding code
 """
 
         # Convert system prompt
@@ -130,72 +139,113 @@ IMPORTANT TOOL USE GUIDELINES:
                 openai_messages.append({"role": "system", "content": system_text})
                 continue
 
-            openai_msg: Dict[str, Any] = {"role": msg.role.value}
-
-            # Handle content
+            # Handle content based on message role
             if isinstance(msg.content, str):
-                openai_msg["content"] = msg.content
+                openai_messages.append({
+                    "role": msg.role.value,
+                    "content": msg.content
+                })
             else:
-                # List of content blocks
-                content_parts = []
+                # List of content blocks - process by type
+                text_parts = []
                 tool_calls = []
+                tool_results = []
 
                 for block in msg.content:
                     if isinstance(block, RequestTextBlock):
-                        content_parts.append(block.text)
+                        text_parts.append(block.text)
                     elif isinstance(block, RequestToolUseBlock):
                         # Tool use from assistant
-                        tool_calls.append(
-                            {
-                                "id": block.id,
-                                "type": "function",
-                                "function": {
-                                    "name": block.name,
-                                    "arguments": json.dumps(block.input)
-                                    if isinstance(block.input, dict)
-                                    else block.input,
-                                },
-                            }
-                        )
+                        tool_calls.append({
+                            "id": block.id,
+                            "type": "function",
+                            "function": {
+                                "name": block.name,
+                                "arguments": json.dumps(block.input)
+                                if isinstance(block.input, dict)
+                                else block.input,
+                            },
+                        })
                     elif isinstance(block, RequestToolResultBlock):
-                        # Tool result from user
-                        tool_content = block.content
-                        if isinstance(tool_content, str):
-                            content_parts.append(tool_content)
+                        # Tool result - extract content
+                        result_content = ""
+                        if isinstance(block.content, str):
+                            result_content = block.content
                         else:
-                            for sub_block in tool_content:
+                            result_parts = []
+                            for sub_block in block.content:
                                 if isinstance(sub_block, RequestTextBlock):
-                                    content_parts.append(sub_block.text)
+                                    result_parts.append(sub_block.text)
+                            result_content = "\n".join(result_parts)
 
-                        # For tool results, create a separate message
-                        openai_messages.append(
-                            {
-                                "role": "tool",
-                                "tool_call_id": block.tool_use_id,
-                                "content": "\n".join(content_parts) if content_parts else "",
-                            }
-                        )
-                        content_parts = []
-                        continue
+                        tool_results.append({
+                            "tool_call_id": block.tool_use_id,
+                            "content": result_content,
+                        })
+                        logger.debug(f"Tool result for {block.tool_use_id}: {result_content[:100]}...")
 
-                if content_parts:
-                    openai_msg["content"] = "\n".join(content_parts)
+                # Now emit messages in correct order for OpenAI format
+                # 1. If assistant message with text and/or tool_calls
+                if msg.role.value == "assistant":
+                    assistant_msg = {"role": "assistant"}
+                    if text_parts:
+                        assistant_msg["content"] = "\n".join(text_parts)
+                    else:
+                        assistant_msg["content"] = None  # OpenAI expects null when there are tool_calls
+                    if tool_calls:
+                        assistant_msg["tool_calls"] = tool_calls
+                    openai_messages.append(assistant_msg)
+                    logger.debug(f"Assistant msg: text={len(text_parts)} parts, tool_calls={len(tool_calls)}")
+
+                # 2. If user message with tool results
+                elif msg.role.value == "user":
+                    # First add any tool results as separate "tool" role messages
+                    for tr in tool_results:
+                        openai_messages.append({
+                            "role": "tool",
+                            "tool_call_id": tr["tool_call_id"],
+                            "content": tr["content"],
+                        })
+                        logger.debug(f"Tool result msg: id={tr['tool_call_id']}, content_len={len(tr['content'])}")
+
+                    # Then add user text if any (separate from tool results)
+                    if text_parts:
+                        openai_messages.append({
+                            "role": "user",
+                            "content": "\n".join(text_parts),
+                        })
+                        logger.debug(f"User text msg: {len(text_parts)} parts")
                 else:
-                    openai_msg["content"] = ""
-
-                if tool_calls:
-                    openai_msg["tool_calls"] = tool_calls
-
-            openai_messages.append(openai_msg)
+                    # Other roles (shouldn't happen often)
+                    openai_messages.append({
+                        "role": msg.role.value,
+                        "content": "\n".join(text_parts) if text_parts else "",
+                    })
 
         # Log converted messages for debugging
         logger.info(f"GGUF Anthropic->OpenAI: Converted {len(messages)} Anthropic msgs to {len(openai_messages)} OpenAI msgs")
-        for i, m in enumerate(openai_messages[-5:]):  # Last 5 messages
+        for i, m in enumerate(openai_messages[-8:]):  # Last 8 messages for better context
             role = m.get('role', '?')
-            content_preview = str(m.get('content', ''))[:80] if m.get('content') else '<null>'
-            has_tools = 'tool_calls' in m
-            tool_id = m.get('tool_call_id', '')
-            logger.info(f"  msg[{len(openai_messages)-5+i}] {role}: '{content_preview}' tool_calls={has_tools} tool_call_id={tool_id}")
+            content = m.get('content')
+            content_preview = str(content)[:100].replace('\n', '\\n') if content else '<null>'
+            tool_calls = m.get('tool_calls', [])
+            tool_call_id = m.get('tool_call_id', '')
+
+            # Show tool call names if present
+            tool_info = ""
+            if tool_calls:
+                tool_names = [tc.get('function', {}).get('name', '?') for tc in tool_calls]
+                tool_info = f" tools=[{', '.join(tool_names)}]"
+            if tool_call_id:
+                tool_info = f" tool_result_for={tool_call_id}"
+
+            # Highlight errors in content
+            is_error = content and ('ERROR' in str(content) or 'error' in str(content).lower())
+            error_flag = " ⚠️ERROR" if is_error else ""
+
+            idx = len(openai_messages) - 8 + i
+            if idx >= 0:
+                logger.info(f"  [{idx}] {role}: '{content_preview}'{tool_info}{error_flag}")
 
         return openai_messages
 
@@ -490,21 +540,15 @@ IMPORTANT TOOL USE GUIDELINES:
         context_warning = None
         try:
             from extensions.auto_compact import check_context_warning
-            from extensions.gguf_backend import load_gguf_config
+            from extensions.model_configs import get_model_config
 
-            gguf_config = load_gguf_config()
-
-            # Extract context size from default_args
-            ctx_size = 32768
-            args = gguf_config.get("default_args", [])
-            for i, arg in enumerate(args):
-                if arg in ("-c", "--ctx-size") and i + 1 < len(args):
-                    ctx_size = int(args[i + 1])
-                    break
+            # Get context limit from per-model config
+            model_config = get_model_config(request.model)
+            ctx_size = model_config.get("context_length", 65536)
 
             warning_config = {
                 "context_limit": ctx_size,
-                "threshold_percent": gguf_config.get("context_warning_threshold", 75),
+                "threshold_percent": 75,
             }
 
             context_warning = check_context_warning(
@@ -552,6 +596,8 @@ IMPORTANT TOOL USE GUIDELINES:
         finish_reason = "stop"
         prompt_tokens = 0
         completion_tokens = 0
+        tokens_per_second = 0.0
+        cache_read_tokens = 0
 
         # Track streaming tool calls from llama-server
         streaming_tool_calls = {}  # index -> {id, name, arguments}
@@ -613,6 +659,16 @@ IMPORTANT TOOL USE GUIDELINES:
         try:
             async for chunk in stream:
                 chunk_count += 1
+
+                # Extract tokens_per_second and cache stats from llama-server's timings field
+                if "timings" in chunk:
+                    timings = chunk.get("timings", {})
+                    tps = timings.get("predicted_per_second", 0)
+                    cache_n = timings.get("cache_n", 0)
+                    if tps:
+                        tokens_per_second = round(tps, 1)
+                    if cache_n > 0:
+                        cache_read_tokens = cache_n
 
                 # Track usage from final chunk (may have empty choices)
                 usage_data = chunk.get("usage", {})
@@ -809,6 +865,10 @@ IMPORTANT TOOL USE GUIDELINES:
         else:
             stop_reason = StopReason.END_TURN
 
+        # Log server stats for visibility (Claude CLI users can see this in server logs)
+        cache_info = f" [cache: {cache_read_tokens} tokens]" if cache_read_tokens > 0 else ""
+        logger.info(f"GGUF stats: {completion_tokens} tokens @ {tokens_per_second} tok/s{cache_info}")
+
         # Emit message delta with stop reason and usage
         yield MessageStreamEvent(
             type=StreamEventType.MESSAGE_DELTA,
@@ -816,6 +876,7 @@ IMPORTANT TOOL USE GUIDELINES:
             usage=Usage(
                 input_tokens=prompt_tokens,
                 output_tokens=completion_tokens,
+                cache_read_input_tokens=cache_read_tokens if cache_read_tokens > 0 else None,
             ),
         )
 

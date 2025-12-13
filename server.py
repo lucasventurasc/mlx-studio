@@ -36,7 +36,7 @@ CACHE_DEFAULTS = {
     "MLX_CACHE_BLOCK_SIZE": "256",
     "MLX_CACHE_MAX_SLOTS": "4",
     "MLX_CACHE_MIN_REUSE": "512",
-    "MLX_CACHE_MAX_TOKENS": "65536",
+    "MLX_CACHE_MAX_TOKENS": "131072",  # 128K context
     "MLX_MODEL_CACHE_SIZE": "3",
     "MLX_MODEL_CACHE_TTL": "0",
 }
@@ -73,6 +73,7 @@ from routers.gguf import router as gguf_router
 from routers.models import router as models_router, set_mlx_lock as set_models_lock
 from routers.cache import router as cache_router, set_mlx_lock as set_cache_lock, trigger_prewarm_if_needed
 from routers.misc import router as misc_router, setup_log_handler
+from routers.model_configs import router as model_configs_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -132,6 +133,7 @@ app.include_router(gguf_router)
 app.include_router(models_router)
 app.include_router(cache_router)
 app.include_router(misc_router)
+app.include_router(model_configs_router)
 
 
 # =============================================================================

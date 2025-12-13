@@ -54,6 +54,7 @@ class GGUFServerManager:
     def __init__(self):
         self.process: Optional[subprocess.Popen] = None
         self.current_model: Optional[str] = None
+        self.current_context_length: Optional[int] = None
         self.port: int = 8080
         self._config = load_gguf_config()
 
@@ -85,6 +86,7 @@ class GGUFServerManager:
         model_path: str,
         port: Optional[int] = None,
         extra_args: Optional[List[str]] = None,
+        context_length: Optional[int] = None,
     ) -> dict:
         """Start llama-server with the specified model.
 
@@ -92,6 +94,7 @@ class GGUFServerManager:
             model_path: Path to GGUF model file
             port: Server port (default from config)
             extra_args: Additional command line arguments
+            context_length: Context window size (overrides default_args -c)
 
         Returns:
             Status dict with 'status', 'model', 'port' keys
@@ -101,17 +104,23 @@ class GGUFServerManager:
         if port is None:
             port = self._config.get("port", 8080)
 
-        # Check if already running with same model
+        # Check if already running with same model and context
         if self.is_running():
-            if self.current_model == model_path and self.port == port:
-                logger.info(f"llama-server already running with {model_path}")
+            same_model = self.current_model == model_path
+            same_port = self.port == port
+            same_context = context_length is None or self.current_context_length == context_length
+
+            if same_model and same_port and same_context:
+                logger.info(f"llama-server already running with {model_path} (ctx={self.current_context_length})")
                 return {
                     "status": "already_running",
                     "model": model_path,
                     "port": port,
+                    "context_length": self.current_context_length,
                 }
-            # Different model - need to restart
-            logger.info(f"Stopping llama-server to switch model")
+            # Different model or context - need to restart
+            reason = "model" if not same_model else "context_length" if not same_context else "port"
+            logger.info(f"Stopping llama-server to change {reason}")
             self.stop()
 
         # Validate model path
@@ -121,7 +130,31 @@ class GGUFServerManager:
 
         self.port = port
         llama_server = self._config.get("llama_server_path", "llama-server")
-        default_args = self._config.get("default_args", ["--jinja", "-fa"])
+        default_args = list(self._config.get("default_args", ["--jinja", "-fa"]))
+
+        # Override context length if provided
+        if context_length:
+            # Remove existing -c / --ctx-size from default_args
+            filtered_args = []
+            skip_next = False
+            for arg in default_args:
+                if skip_next:
+                    skip_next = False
+                    continue
+                if arg in ("-c", "--ctx-size"):
+                    skip_next = True
+                    continue
+                filtered_args.append(arg)
+            default_args = filtered_args
+            # Add the new context length
+            default_args.extend(["-c", str(context_length)])
+            self.current_context_length = context_length
+        else:
+            # Extract context length from default_args for tracking
+            for i, arg in enumerate(default_args):
+                if arg in ("-c", "--ctx-size") and i + 1 < len(default_args):
+                    self.current_context_length = int(default_args[i + 1])
+                    break
 
         args = [
             llama_server,
@@ -351,6 +384,10 @@ class GGUFBackend:
         """
         client = await self._get_client()
 
+        # Check if thinking/reasoning is explicitly configured
+        config = load_gguf_config()
+        enable_thinking = config.get("enable_thinking")  # None = not set, let client decide
+
         payload = {
             "messages": messages,
             "max_tokens": max_tokens,
@@ -359,6 +396,10 @@ class GGUFBackend:
             "stream": True,
             "stream_options": {"include_usage": True},  # Request usage stats in final chunk
         }
+
+        # Only set enable_thinking if explicitly configured (not None)
+        if enable_thinking is not None:
+            payload["enable_thinking"] = enable_thinking
 
         if tools:
             payload["tools"] = tools

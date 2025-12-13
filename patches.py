@@ -212,12 +212,47 @@ def get_tier_config(tier: str) -> dict:
         tier: One of 'haiku', 'sonnet', 'opus'
 
     Returns:
-        Dict with 'model', 'draft_model', 'backend' keys, or empty dict if not found
+        Dict with 'model', 'draft_model', 'backend', 'context_length', 'max_tokens' keys
     """
     if not _ROUTING_CONFIG:
         load_routing_config()
 
-    return _ROUTING_CONFIG.get("tiers", {}).get(tier, {})
+    # Default values per tier
+    tier_defaults = {
+        "haiku": {"context_length": 32768, "max_tokens": 4096},      # Small/fast model
+        "sonnet": {"context_length": 131072, "max_tokens": 16384},   # Medium model
+        "opus": {"context_length": 131072, "max_tokens": 32000},     # Large model
+    }
+
+    config = _ROUTING_CONFIG.get("tiers", {}).get(tier, {})
+    defaults = tier_defaults.get(tier, {"context_length": 65536, "max_tokens": 8192})
+
+    # Merge with defaults
+    return {
+        "model": config.get("model", ""),
+        "draft_model": config.get("draft_model", ""),
+        "backend": config.get("backend", "mlx"),
+        "context_length": config.get("context_length", defaults["context_length"]),
+        "max_tokens": config.get("max_tokens", defaults["max_tokens"]),
+    }
+
+
+def get_tier_for_model(model_id: str) -> str:
+    """Get the tier name for a model ID.
+
+    Args:
+        model_id: Model ID (e.g., 'claude-sonnet-4-5-20250929')
+
+    Returns:
+        Tier name ('haiku', 'sonnet', 'opus') or 'sonnet' as default
+    """
+    if not _ROUTING_CONFIG:
+        load_routing_config()
+
+    if model_id.startswith("claude-"):
+        return _detect_claude_tier(model_id)
+
+    return "sonnet"  # Default
 
 
 def apply_patches():
