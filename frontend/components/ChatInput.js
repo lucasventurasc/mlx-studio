@@ -70,6 +70,9 @@ export function ChatInput() {
         actions.addMessage({ role: 'user', content });
         actions.addLog('info', `Sending message (${content.length} chars)...`);
 
+        // Keep focus on input after sending
+        textareaRef.current?.focus();
+
         // Use setTimeout to ensure UI updates before blocking fetch
         await new Promise(resolve => setTimeout(resolve, 0));
 
@@ -86,13 +89,21 @@ export function ChatInput() {
 
         try {
             const store = getStore();
-            const messages = [...(store.messages || [])];
+            // Filter out empty assistant messages (from previous failed generations)
+            const messages = [...(store.messages || [])].filter(m =>
+                !(m.role === 'assistant' && (!m.content || m.content.trim() === ''))
+            );
 
-            const messagesWithSystem = settings.systemPrompt
-                ? [{ role: 'system', content: settings.systemPrompt }, ...messages]
+            // Build system prompt
+            let systemContent = settings.systemPrompt || '';
+
+            // Only add system message if there's actual content
+            const messagesWithSystem = systemContent.trim()
+                ? [{ role: 'system', content: systemContent }, ...messages]
                 : messages;
 
-            // Debug: log settings being sent
+            // Debug: log what we're sending
+            console.log('[ChatInput] Messages being sent:', messagesWithSystem);
             console.log('[ChatInput] Settings:', {
                 maxTokens: settings.maxTokens,
                 temperature: settings.temperature,
@@ -109,47 +120,70 @@ export function ChatInput() {
 
             // Check if model supports thinking mode from model capabilities
             // Capabilities come from model config files (tokenizer_config.json has <think> token)
+            // Note: Qwen3-Coder models have <think> token but thinking mode causes issues
             let supportsThinking = false;
-            if (currentModel.capabilities?.supports_thinking) {
-                supportsThinking = true;
-                console.log('[ChatInput] Model supports thinking mode:', currentModel.name);
+            if (currentModel.capabilities?.supports_thinking && settings.enableThinking) {
+                // Skip thinking for Coder models - they have the token but it doesn't work properly
+                const isCoderModel = currentModel.name?.toLowerCase().includes('coder');
+                if (!isCoderModel) {
+                    supportsThinking = true;
+                    console.log('[ChatInput] Model supports thinking mode:', currentModel.name);
+                } else {
+                    console.log('[ChatInput] Skipping thinking mode for Coder model:', currentModel.name);
+                }
             }
 
             if (settings.streamEnabled) {
                 let firstChunk = true;
-                const requestBody = {
-                    model: modelPath,
-                    messages: messagesWithSystem,
-                    temperature: settings.temperature ?? 0.7,
-                    max_tokens: settings.maxTokens ?? 4096,
-                    top_p: settings.topP ?? 0.9,
-                    max_kv_size: settings.contextLength ?? 32768,
-                    stream_options: { include_usage: true }
+                let wasThinking = false;
+
+                const doStreamRequest = async () => {
+                    const requestBody = {
+                        model: modelPath,
+                        messages: messagesWithSystem,
+                        temperature: settings.temperature ?? 0.7,
+                        max_tokens: settings.maxTokens ?? 4096,
+                        top_p: settings.topP ?? 0.9,
+                        max_kv_size: settings.contextLength ?? 32768,
+                        stream_options: { include_usage: true }
+                    };
+
+                    // Add thinking mode for supported models
+                    if (supportsThinking) {
+                        requestBody.extra_body = { enable_thinking: true };
+                    }
+
+                    await endpoints.chatStream(requestBody,
+                    // onChunk callback - receives content with <think> tags intact
+                    (delta) => {
+                        if (firstChunk) {
+                            firstChunk = false;
+                            setLiveStats(s => ({ ...s, processing: false }));
+                            actions.addLog('info', 'First token received, streaming...');
+                        }
+                        responseText += delta;
+                        actions.updateLastMessage(responseText);
+                    },
+                    // onStats callback (real-time) - includes isThinking flag
+                    (stats) => {
+                        // Log when thinking starts
+                        if (stats.isThinking && !wasThinking) {
+                            actions.addLog('info', 'Model is thinking...');
+                            wasThinking = true;
+                        } else if (!stats.isThinking && wasThinking) {
+                            actions.addLog('info', 'Model finished thinking, generating response...');
+                            wasThinking = false;
+                        }
+                        setLiveStats({ ...stats, processing: false });
+                        finalStats = stats;
+                    },
+                    // AbortSignal
+                    abortControllerRef.current.signal);
                 };
 
-                // Add thinking mode for supported models
-                if (supportsThinking) {
-                    requestBody.extra_body = { enable_thinking: true };
-                }
+                // First request
+                await doStreamRequest();
 
-                await endpoints.chatStream(requestBody,
-                // onChunk callback
-                (delta) => {
-                    if (firstChunk) {
-                        firstChunk = false;
-                        setLiveStats(s => ({ ...s, processing: false }));
-                        actions.addLog('info', 'First token received, streaming...');
-                    }
-                    responseText += delta;
-                    actions.updateLastMessage(responseText);
-                },
-                // onStats callback (real-time)
-                (stats) => {
-                    setLiveStats({ ...stats, processing: false });
-                    finalStats = stats;
-                },
-                // AbortSignal
-                abortControllerRef.current.signal);
             } else {
                 const requestBody = {
                     model: modelPath,
@@ -255,6 +289,11 @@ export function ChatInput() {
                                         ${displayStats.processing && html`
                                             <span class="stat-badge processing" title="Processing prompt...">
                                                 <span class="processing-spinner"></span> processing
+                                            </span>
+                                        `}
+                                        ${displayStats.isThinking && !displayStats.processing && html`
+                                            <span class="stat-badge thinking" title="Model is thinking...">
+                                                <span class="thinking-spinner"></span> thinking
                                             </span>
                                         `}
                                         ${displayStats.cache_hit && !displayStats.processing && html`

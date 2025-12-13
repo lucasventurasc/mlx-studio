@@ -83,12 +83,12 @@ const defaultVoiceSettings = {
     inputMode: 'ptt',        // 'ptt' (push-to-talk) or 'vad' (voice activity detection)
     vadThreshold: 0.3,       // Sensitivity threshold for VAD (medium = normal speech)
     vadSilenceDuration: 1200, // ms of silence before speech ends (1.2s feels natural)
-    ttsVoice: 'pf_dora',     // Default TTS voice (PT-BR)
+    ttsVoice: 'conversational_a',  // Default TTS voice (Marvis Female)
     ttsSpeed: 1.0,           // TTS playback speed (0.25 - 4.0)
-    ttsModel: 'mlx-community/Kokoro-82M-4bit',
+    ttsModel: 'Marvis-AI/marvis-tts-250m-v0.1',
     ttsEnabled: true,        // Auto-play TTS responses
     sttModel: 'mlx-community/whisper-large-v3-turbo',
-    sttLanguage: 'pt'        // STT language (ISO-639-1 code or 'auto')
+    sttLanguage: 'en'        // STT language (English)
 };
 
 // Initial state (with persistence)
@@ -137,19 +137,7 @@ const initialState = {
     // Voice Mode
     voiceSettings: { ...defaultVoiceSettings },
     voiceMessages: [],        // Separate history for voice conversations
-    voiceSystemPrompt: `You ARE a voice assistant - you hear the user speak and you speak back. This is a real-time voice conversation.
-
-RULES:
-- 1-2 short sentences MAX (you're speaking, not writing)
-- Match the user's language exactly
-- NO markdown, code blocks, lists, emojis, or special characters
-- Write numbers as words (e.g. "twenty three" not "23")
-- Be casual and natural - like chatting with a friend
-- NEVER ask "how can I help" or offer assistance unprompted
-- NEVER say "as an AI", "I'm a text-based AI", or give disclaimers
-- NEVER mention TTS, speech synthesis, or "different systems" - YOU are the voice
-- If they just want to chat, just chat naturally
-- Keep responses conversational, not robotic`,    // System prompt for voice mode
+    voiceSystemPrompt: `You are a helpful voice assistant. Keep responses concise and conversational - 1-2 sentences when possible. Speak naturally as if having a conversation.`,
 
     // Theme
     theme: 'system' // 'light', 'dark', or 'system'

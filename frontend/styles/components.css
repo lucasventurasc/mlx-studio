@@ -559,6 +559,22 @@
     animation: spin 0.8s linear infinite;
 }
 
+/* Thinking spinner - purple accent */
+.thinking-spinner {
+    width: 10px;
+    height: 10px;
+    border: 2px solid var(--accent);
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+/* Thinking badge style */
+.stat-badge.thinking {
+    background: var(--accent-bg, rgba(139, 92, 246, 0.15));
+    color: var(--accent);
+}
+
 @keyframes spin {
     to { transform: rotate(360deg); }
 }
@@ -783,6 +799,25 @@
 
 .message-text a:hover {
     text-decoration: underline;
+}
+
+/* Citation references [1], [2], etc. */
+.message-text .citation-ref {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 600;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    margin: 0 1px;
+    background: var(--accent);
+    color: white;
+    border-radius: 3px;
+    vertical-align: super;
+    cursor: default;
+    font-family: var(--font-mono);
 }
 
 /* Markdown headings */

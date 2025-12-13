@@ -1,5 +1,5 @@
 // VoiceMode - Main voice conversation component
-// Jarvis-style voice interaction with STT, Chat, and TTS
+// Modern, professional voice interface with STT, Chat, and TTS
 
 const { html, useState, useEffect, useRef, useCallback } = window.preact;
 import { useStore, actions, getStore, showToast } from '../hooks/useStore.js';
@@ -21,7 +21,7 @@ import {
 
 /**
  * VoiceMode Component
- * Full-screen voice conversation interface
+ * Full-screen voice conversation interface with modern design
  */
 export function VoiceMode() {
     // Store state
@@ -58,6 +58,9 @@ export function VoiceMode() {
     const audioLevel = voiceState === 'listening' ? recorder.audioLevel :
                        voiceState === 'speaking' ? player.getAudioLevel() : 0;
 
+    // Get frequency data for real-time visualization (only when speaking)
+    const getFrequencyData = voiceState === 'speaking' ? player.getFrequencyData : null;
+
     // Handle transcription and chat
     const processAudio = useCallback(async (audioBlob) => {
         if (!audioBlob || isProcessingRef.current) return;
@@ -87,13 +90,13 @@ export function VoiceMode() {
             // Add user message to voice history
             actions.addVoiceMessage({ role: 'user', content: text });
 
-            // Step 2: Get chat response
+            // Step 2: Build messages for chat
             const messages = [
                 ...(voiceMessages || []),
                 { role: 'user', content: text }
             ];
 
-            // Add system prompt if set
+            // Add system prompt
             const voiceSystemPrompt = getStore().voiceSystemPrompt;
             if (voiceSystemPrompt) {
                 messages.unshift({ role: 'system', content: voiceSystemPrompt });
@@ -111,9 +114,10 @@ export function VoiceMode() {
             console.log('Voice: Sending to chat', {
                 model: modelPath,
                 messageCount: messages.length,
-                systemPrompt: messages[0]?.role === 'system' ? messages[0].content.substring(0, 50) + '...' : 'none',
+                systemPrompt: messages[0]?.role === 'system' ? messages[0].content : 'none',
                 userMessage: text
             });
+            console.log('Voice: Full messages:', JSON.stringify(messages, null, 2));
             abortControllerRef.current = new AbortController();
 
             const chatStart = performance.now();
@@ -126,8 +130,8 @@ export function VoiceMode() {
             let ttsEnabled = voiceSettings?.ttsEnabled !== false;
 
             const ttsOptions = {
-                model: voiceSettings?.ttsModel || 'mlx-community/Kokoro-82M-4bit',
-                voice: voiceSettings?.ttsVoice || 'af_sky',
+                model: voiceSettings?.ttsModel || 'Marvis-AI/marvis-tts-250m-v0.1',
+                voice: voiceSettings?.ttsVoice || 'conversational_a',
                 speed: voiceSettings?.ttsSpeed || 1.0
             };
 
@@ -193,6 +197,8 @@ export function VoiceMode() {
             // Queue text for TTS (processes in order)
             const sendToTTS = (sentence) => {
                 if (!sentence.trim() || !ttsEnabled) return;
+                if (sentence.length < 3) return;
+
                 console.log('Voice: Queuing for TTS:', sentence);
                 ttsTextQueue.push(sentence);
                 processTTSQueue();  // Start processing if not already
@@ -203,84 +209,96 @@ export function VoiceMode() {
                 setVoiceState('speaking');
             }
 
-            await api.stream(
-                '/v1/chat/completions',
-                {
-                    model: modelPath,
-                    messages,
-                    max_tokens: 1024
-                },
-                (chunk) => {
-                    responseText += chunk;
-                    pendingText += chunk;
-                    setLastResponse(responseText);
+            const doStreamRequest = async (enableTTS = true) => {
+                await api.stream(
+                    '/v1/chat/completions',
+                    {
+                        model: modelPath,
+                        messages: messages,
+                        max_tokens: 150,  // Keep voice responses SHORT
+                        temperature: 0.7,
+                        // Disable thinking mode for voice - we don't want to speak thoughts
+                        extra_body: { enable_thinking: false }
+                    },
+                    (chunk) => {
+                        responseText += chunk;
+                        pendingText += chunk;
 
-                    // Hybrid TTS chunking: prioritize punctuation, fallback to length
-                    // This creates more natural speech breaks
+                        // Show response
+                        setLastResponse(responseText);
 
-                    // Check for sentence-ending punctuation (highest priority)
-                    const sentenceMatch = pendingText.match(/^(.*?[.!?])\s*/);
-                    if (sentenceMatch) {
-                        const sentence = sentenceMatch[1].trim();
-                        pendingText = pendingText.slice(sentenceMatch[0].length);
-                        if (sentence.length > 3) {
-                            sendToTTS(sentence);
-                        }
-                        return;
-                    }
+                        // If TTS disabled for this request, just accumulate
+                        if (!enableTTS) return;
 
-                    // Check for newline (also high priority)
-                    const newlineIdx = pendingText.indexOf('\n');
-                    if (newlineIdx > 3) {
-                        const textBefore = pendingText.slice(0, newlineIdx).trim();
-                        pendingText = pendingText.slice(newlineIdx + 1);
-                        if (textBefore.length > 3) {
-                            sendToTTS(textBefore);
-                        }
-                        return;
-                    }
+                        // Hybrid TTS chunking: prioritize punctuation, fallback to length
+                        // This creates more natural speech breaks
 
-                    // Check for comma/colon/semicolon after reasonable length (medium priority)
-                    if (pendingText.length > 20) {
-                        const clauseMatch = pendingText.match(/^(.{15,}?[,;:])\s*/);
-                        if (clauseMatch) {
-                            const clause = clauseMatch[1].trim();
-                            pendingText = pendingText.slice(clauseMatch[0].length);
-                            if (clause.length > 5) {
-                                sendToTTS(clause);
+                        // Check for sentence-ending punctuation (highest priority)
+                        const sentenceMatch = pendingText.match(/^(.*?[.!?])\s*/);
+                        if (sentenceMatch) {
+                            const sentence = sentenceMatch[1].trim();
+                            pendingText = pendingText.slice(sentenceMatch[0].length);
+                            if (sentence.length > 3) {
+                                sendToTTS(sentence);
                             }
                             return;
                         }
-                    }
 
-                    // Force break at word boundary if too long (lowest priority fallback)
-                    // Only triggers for text without any punctuation
-                    if (pendingText.length > 120) {
-                        const breakPoint = pendingText.lastIndexOf(' ', 100);
-                        if (breakPoint > 30) {
-                            const textToSend = pendingText.slice(0, breakPoint).trim();
-                            pendingText = pendingText.slice(breakPoint + 1);
-                            if (textToSend.length > 10) {
-                                sendToTTS(textToSend);
+                        // Check for newline (also high priority)
+                        const newlineIdx = pendingText.indexOf('\n');
+                        if (newlineIdx > 3) {
+                            const textBefore = pendingText.slice(0, newlineIdx).trim();
+                            pendingText = pendingText.slice(newlineIdx + 1);
+                            if (textBefore.length > 3) {
+                                sendToTTS(textBefore);
+                            }
+                            return;
+                        }
+
+                        // Check for comma/colon/semicolon after reasonable length (medium priority)
+                        if (pendingText.length > 20) {
+                            const clauseMatch = pendingText.match(/^(.{15,}?[,;:])\s*/);
+                            if (clauseMatch) {
+                                const clause = clauseMatch[1].trim();
+                                pendingText = pendingText.slice(clauseMatch[0].length);
+                                if (clause.length > 5) {
+                                    sendToTTS(clause);
+                                }
+                                return;
                             }
                         }
-                    }
-                },
-                null,
-                abortControllerRef.current.signal
-            );
 
-            // Send any remaining text (this one we wait for)
-            if (pendingText.trim().length > 5) {
-                console.log('Voice: TTS final chunk:', pendingText.trim());
+                        // Force break at word boundary if too long (lowest priority fallback)
+                        if (pendingText.length > 120) {
+                            const breakPoint = pendingText.lastIndexOf(' ', 100);
+                            if (breakPoint > 30) {
+                                const textToSend = pendingText.slice(0, breakPoint).trim();
+                                pendingText = pendingText.slice(breakPoint + 1);
+                                if (textToSend.length > 10) {
+                                    sendToTTS(textToSend);
+                                }
+                            }
+                        }
+                    },
+                    null,
+                    abortControllerRef.current.signal
+                );
+            };
+
+            // Stream the response with TTS enabled
+            await doStreamRequest(true);
+
+            // Send any remaining text to TTS
+            if (pendingText.length > 5 && ttsEnabled) {
+                console.log('Voice: TTS final chunk:', pendingText);
                 try {
-                    const audioBlob = await synthesizeSpeech(pendingText.trim(), ttsOptions);
+                    const audioBlob = await synthesizeSpeech(pendingText, ttsOptions);
                     if (audioBlob && audioBlob.size > 0) {
                         audioQueue.push(audioBlob);
                         playNextInQueue();
                     }
                 } catch (err) {
-                    console.error('Voice: TTS error for final chunk:', err);
+                    console.error('Voice: TTS error:', err);
                 }
             }
 
@@ -508,40 +526,51 @@ export function VoiceMode() {
 
     return html`
         <div class="voice-mode">
+            <!-- Background gradient -->
+            <div class="voice-mode-bg"></div>
+
             <!-- Header -->
-            <div class="voice-mode-header">
-                <div class="voice-mode-title">
-                    <${MicrophoneIcon} size=${20} />
-                    Voice Mode
-                    <!-- Mic status indicator -->
-                    <span class="voice-mic-status ${micActive ? 'active' : ''} ${recorder.error || vad.error ? 'error' : ''}">
-                        ${recorder.error || vad.error ? 'Mic Error' : micActive ? 'Mic Active' : 'Mic Off'}
-                    </span>
+            <header class="voice-header">
+                <div class="voice-header-left">
+                    <div class="voice-logo">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                            <line x1="12" y1="19" x2="12" y2="23"/>
+                            <line x1="8" y1="23" x2="16" y2="23"/>
+                        </svg>
+                        <span>Voice Mode</span>
+                    </div>
+                    <div class="voice-status-badge ${micActive ? 'active' : ''} ${recorder.error || vad.error ? 'error' : ''}">
+                        <span class="status-dot"></span>
+                        ${recorder.error || vad.error ? 'Error' : micActive ? 'Active' : 'Ready'}
+                    </div>
                 </div>
-                <div class="voice-mode-header-actions">
+
+                <div class="voice-header-right">
                     <button
-                        class="voice-mode-btn"
+                        class="voice-header-btn"
                         onClick=${handleClearHistory}
                         title="Clear conversation"
                     >
-                        <${TrashIcon} size=${18} />
+                        <${TrashIcon} size=${16} />
                     </button>
                     <button
-                        class="voice-mode-btn"
+                        class="voice-header-btn ${showSettings ? 'active' : ''}"
                         onClick=${() => setShowSettings(!showSettings)}
-                        title="Voice settings"
+                        title="Settings"
                     >
-                        <${SettingsIcon} size=${18} />
+                        <${SettingsIcon} size=${16} />
                     </button>
                     <button
-                        class="voice-mode-btn"
+                        class="voice-header-btn close"
                         onClick=${handleClose}
-                        title="Close voice mode"
+                        title="Close"
                     >
-                        <${XIcon} size=${18} />
+                        <${XIcon} size=${16} />
                     </button>
                 </div>
-            </div>
+            </header>
 
             <!-- Settings Panel -->
             ${showSettings && html`
@@ -552,47 +581,63 @@ export function VoiceMode() {
             `}
 
             <!-- Main Content -->
-            <div class="voice-mode-content">
-                <!-- Voice Orb -->
-                <${VoiceOrb}
-                    state=${voiceState}
-                    audioLevel=${audioLevel}
-                    onClick=${inputMode === 'ptt' ? handlePTTStart : null}
-                />
-
-                <!-- Audio Level Meter -->
-                <div class="voice-level-meter">
-                    <div class="voice-level-bar" style="width: ${Math.min(100, micLevel * 100 * 3)}%"></div>
-                    <span class="voice-level-label">
-                        ${micLevel > 0.01 ? 'Audio detected' : 'No audio'}
-                    </span>
+            <main class="voice-main">
+                <!-- Visualizer Section -->
+                <div class="voice-visualizer-section">
+                    <${VoiceOrb}
+                        state=${voiceState}
+                        audioLevel=${audioLevel}
+                        getFrequencyData=${getFrequencyData}
+                        onClick=${inputMode === 'ptt' ? handlePTTStart : null}
+                    />
                 </div>
 
-                <!-- Transcript Display -->
-                <div class="voice-transcript">
-                    <div class="voice-transcript-label">
-                        ${voiceState === 'listening' ? 'Listening...' :
-                          voiceState === 'processing' ? 'Processing...' :
-                          voiceState === 'speaking' ? 'Response' : 'Transcript'}
+                <!-- Transcript Section -->
+                <div class="voice-transcript-section">
+                    <div class="voice-transcript-card">
+                        <div class="transcript-header">
+                            <span class="transcript-label">
+                                ${voiceState === 'listening' ? 'Listening...' :
+                                  voiceState === 'processing' ? 'Processing...' :
+                                  voiceState === 'speaking' ? 'Response' : 'Transcript'}
+                            </span>
+                            ${voiceState !== 'idle' && html`
+                                <div class="transcript-indicator">
+                                    <span class="indicator-dot"></span>
+                                    <span class="indicator-dot"></span>
+                                    <span class="indicator-dot"></span>
+                                </div>
+                            `}
+                        </div>
+                        <div class="transcript-content ${!transcript && !lastResponse ? 'empty' : ''}">
+                            ${voiceState === 'speaking' || lastResponse ?
+                                lastResponse || 'Generating response...' :
+                                transcript || 'Press and hold Space to speak...'}
+                        </div>
                     </div>
-                    <div class="voice-transcript-text ${!transcript && !lastResponse ? 'empty' : ''}">
-                        ${voiceState === 'speaking' || lastResponse ?
-                            lastResponse || 'Waiting for response...' :
-                            transcript || 'Start speaking...'}
+                </div>
+
+                <!-- Audio Level Bar -->
+                <div class="voice-level-section">
+                    <div class="level-bar-container">
+                        <div class="level-bar-track">
+                            <div class="level-bar-fill" style="width: ${Math.min(100, micLevel * 300)}%"></div>
+                        </div>
+                        <span class="level-label">${micLevel > 0.01 ? 'Audio detected' : 'No audio'}</span>
                     </div>
                 </div>
 
                 <!-- Error Display -->
                 ${error && html`
-                    <div class="voice-error">
-                        <${MicrophoneOffIcon} size=${18} />
-                        ${error}
+                    <div class="voice-error-card">
+                        <${MicrophoneOffIcon} size=${16} />
+                        <span>${error}</span>
                     </div>
                 `}
 
-                <!-- PTT Button (for mobile/click) -->
-                ${inputMode === 'ptt' && html`
-                    <div class="voice-controls">
+                <!-- Control Section -->
+                <div class="voice-control-section">
+                    ${inputMode === 'ptt' && html`
                         <button
                             class="voice-ptt-btn ${voiceState === 'listening' ? 'recording' : ''}"
                             onMouseDown=${handlePTTStart}
@@ -601,60 +646,87 @@ export function VoiceMode() {
                             onTouchStart=${handlePTTStart}
                             onTouchEnd=${handlePTTEnd}
                         >
-                            <${MicrophoneIcon} size=${32} />
+                            <${MicrophoneIcon} size=${24} />
+                            <span>${voiceState === 'listening' ? 'Release to send' : 'Hold to speak'}</span>
+                        </button>
+                    `}
+
+                    <!-- Mode Toggle -->
+                    <div class="voice-mode-switch">
+                        <button
+                            class="mode-switch-btn ${inputMode === 'ptt' ? 'active' : ''}"
+                            onClick=${() => handleToggleMode('ptt')}
+                        >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="6" y="4" width="12" height="16" rx="2"/>
+                                <line x1="12" y1="8" x2="12" y2="12"/>
+                            </svg>
+                            Push-to-talk
+                        </button>
+                        <button
+                            class="mode-switch-btn ${inputMode === 'vad' ? 'active' : ''}"
+                            onClick=${() => handleToggleMode('vad')}
+                        >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"/>
+                                <path d="M12 6v6l4 2"/>
+                            </svg>
+                            Auto-detect
                         </button>
                     </div>
-                `}
-
-                <!-- Mode Toggle -->
-                <div class="voice-mode-toggle">
-                    <span class="voice-mode-toggle-label">Input:</span>
-                    <button
-                        class="voice-mode-toggle-btn ${inputMode === 'ptt' ? 'active' : ''}"
-                        onClick=${() => handleToggleMode('ptt')}
-                    >
-                        Push-to-talk
-                    </button>
-                    <button
-                        class="voice-mode-toggle-btn ${inputMode === 'vad' ? 'active' : ''}"
-                        onClick=${() => handleToggleMode('vad')}
-                    >
-                        Auto-detect
-                    </button>
                 </div>
-            </div>
+            </main>
 
             <!-- Conversation History -->
             ${voiceMessages.length > 0 && html`
-                <div class="voice-history">
-                    ${voiceMessages.slice(-6).map((msg, i) => html`
-                        <div class="voice-history-message" key=${i}>
-                            <span class="voice-history-role ${msg.role}">
-                                ${msg.role === 'user' ? 'You' : 'AI'}
-                            </span>
-                            <span class="voice-history-content">
-                                ${msg.content.length > 150 ?
-                                    msg.content.substring(0, 150) + '...' :
-                                    msg.content}
-                            </span>
-                        </div>
-                    `)}
-                </div>
+                <aside class="voice-history">
+                    <div class="history-header">
+                        <span>Conversation</span>
+                        <span class="history-count">${voiceMessages.length} messages</span>
+                    </div>
+                    <div class="history-list">
+                        ${voiceMessages.slice(-8).map((msg, i) => html`
+                            <div class="history-item ${msg.role}" key=${i}>
+                                <div class="history-avatar">
+                                    ${msg.role === 'user' ? html`
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                                            <circle cx="12" cy="7" r="4"/>
+                                        </svg>
+                                    ` : html`
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                                            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                                            <path d="M2 17l10 5 10-5M2 12l10 5 10-5"/>
+                                        </svg>
+                                    `}
+                                </div>
+                                <div class="history-content">
+                                    ${msg.content.length > 120 ?
+                                        msg.content.substring(0, 120) + '...' :
+                                        msg.content}
+                                </div>
+                            </div>
+                        `)}
+                    </div>
+                </aside>
             `}
 
-            <!-- Footer with hints -->
-            <div class="voice-mode-footer">
-                <div class="voice-mode-hint">
-                    ${inputMode === 'ptt' ? html`
-                        Hold <kbd>Space</kbd> to talk
-                    ` : html`
-                        Speak naturally - auto-detection enabled
-                    `}
-                    <span style="margin-left: 16px">
-                        <kbd>Esc</kbd> to cancel
-                    </span>
+            <!-- Footer -->
+            <footer class="voice-footer">
+                <div class="voice-shortcuts">
+                    <div class="shortcut">
+                        <kbd>Space</kbd>
+                        <span>Hold to talk</span>
+                    </div>
+                    <div class="shortcut">
+                        <kbd>Esc</kbd>
+                        <span>Cancel</span>
+                    </div>
                 </div>
-            </div>
+                <div class="voice-model-info">
+                    ${currentModel?.id || 'No model selected'}
+                </div>
+            </footer>
         </div>
     `;
 }

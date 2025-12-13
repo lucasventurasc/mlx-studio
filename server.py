@@ -778,6 +778,41 @@ def health():
 
 
 # =============================================================================
+# Web Proxy (for URL fetching from frontend)
+# =============================================================================
+
+import httpx
+
+class ProxyRequest(BaseModel):
+    url: str
+    method: str = "GET"
+    headers: Optional[Dict[str, str]] = None
+
+@app.post("/api/proxy")
+async def web_proxy(request: ProxyRequest):
+    """Proxy web requests to avoid CORS issues."""
+    try:
+        headers = request.headers or {}
+        if "User-Agent" not in headers:
+            headers["User-Agent"] = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            response = await client.request(
+                method=request.method,
+                url=request.url,
+                headers=headers
+            )
+            return {
+                "status": response.status_code,
+                "content": response.text,
+                "headers": dict(response.headers)
+            }
+    except Exception as e:
+        logger.error(f"Proxy error: {e}")
+        return {"error": str(e), "status": 500}
+
+
+# =============================================================================
 # Anthropic Telemetry Capture (Claude Code CLI sends telemetry here)
 # =============================================================================
 
@@ -1016,77 +1051,6 @@ def load_model(model_id: str, warmup_prompt: str = None):
         except Exception as e:
             logger.error(f"Failed to load model {model_id}: {e}")
             return {"status": "error", "model_id": model_id, "error": str(e)}
-
-
-@app.post("/api/models/warmup")
-def warmup_cache(model_id: str, system_prompt: str = None):
-    """Warmup KV cache with a system prompt for faster first response.
-
-    If system_prompt is not provided, uses the learned prompt for this model.
-    """
-    import time
-    from mlx_omni_server.chat.mlx.chat_generator import ChatGenerator
-    from patches import get_learned_prompt
-
-    start = time.time()
-    try:
-        # Use learned prompt if none provided
-        if not system_prompt:
-            system_prompt = get_learned_prompt(model_id)
-            if not system_prompt:
-                return {"status": "no_prompt", "message": "No learned prompt available for this model"}
-
-        wrapper = ChatGenerator.get_or_create(model_id=model_id)
-
-        logger.info(f"Warming up KV cache for {model_id} ({len(system_prompt)} chars)...")
-
-        # Generate 1 token to build KV cache
-        messages = [{"role": "system", "content": system_prompt}]
-        result = wrapper.generate(
-            messages=messages,
-            max_tokens=1,
-            enable_prompt_cache=True
-        )
-
-        elapsed = time.time() - start
-        prompt_tokens = result.stats.prompt_tokens if result.stats else 0
-
-        logger.info(f"KV cache warmed: {prompt_tokens} tokens in {elapsed:.1f}s")
-
-        return {
-            "status": "warmed",
-            "model_id": model_id,
-            "prompt_tokens": prompt_tokens,
-            "time": round(elapsed, 2)
-        }
-    except Exception as e:
-        logger.error(f"Failed to warmup cache: {e}")
-        return {"status": "error", "error": str(e)}
-
-
-@app.get("/api/prompts/learned")
-def get_learned_prompts():
-    """Get all learned system prompts."""
-    from patches import load_learned_prompts
-    prompts = load_learned_prompts()
-    return {
-        "prompts": {
-            k: {"hash": v["hash"], "length": v["length"]}
-            for k, v in prompts.items()
-        }
-    }
-
-
-@app.delete("/api/prompts/learned/{model_id:path}")
-def delete_learned_prompt(model_id: str):
-    """Delete a learned system prompt."""
-    from patches import _LEARNED_PROMPTS, save_learned_prompts, load_learned_prompts
-    load_learned_prompts()
-    if model_id in _LEARNED_PROMPTS:
-        del _LEARNED_PROMPTS[model_id]
-        save_learned_prompts()
-        return {"status": "deleted", "model_id": model_id}
-    return {"status": "not_found", "model_id": model_id}
 
 
 @app.get("/api/models/loaded")

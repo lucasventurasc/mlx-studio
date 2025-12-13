@@ -6,7 +6,6 @@ and newer versions of mlx-lm.
 """
 
 import json
-import hashlib
 import re
 import fnmatch
 from pathlib import Path
@@ -19,9 +18,6 @@ ALIASES_FILE = Path(__file__).parent / "model_aliases.json"
 _ROUTING_CONFIG = {}
 ROUTING_FILE = Path(__file__).parent / "claude_routing.json"
 
-# Learned system prompts cache
-_LEARNED_PROMPTS = {}
-PROMPTS_CACHE_FILE = Path(__file__).parent / "learned_prompts.json"
 
 
 def load_aliases():
@@ -156,102 +152,10 @@ def get_draft_model_for(model_id: str) -> str:
     return None
 
 
-# =============================================================================
-# System Prompt Learning & Caching
-# =============================================================================
-
-def load_learned_prompts():
-    """Load learned system prompts from cache file."""
-    global _LEARNED_PROMPTS
-    if PROMPTS_CACHE_FILE.exists():
-        try:
-            with open(PROMPTS_CACHE_FILE) as f:
-                _LEARNED_PROMPTS = json.load(f)
-        except Exception:
-            pass
-    return _LEARNED_PROMPTS
-
-
-def save_learned_prompts():
-    """Save learned system prompts to cache file."""
-    with open(PROMPTS_CACHE_FILE, "w") as f:
-        json.dump(_LEARNED_PROMPTS, f, indent=2)
-
-
-def learn_system_prompt(model_id: str, messages: list):
-    """Learn and cache system prompt from messages if present."""
-    global _LEARNED_PROMPTS
-    if not _LEARNED_PROMPTS:
-        load_learned_prompts()
-
-    # Extract system message if present
-    system_msg = None
-    for msg in messages:
-        role = msg.get("role", "")
-        if role == "system":
-            content = msg.get("content", "")
-            if isinstance(content, str) and len(content) > 100:  # Only cache substantial prompts
-                system_msg = content
-                break
-
-    if not system_msg:
-        return None
-
-    # Create hash to detect changes
-    prompt_hash = hashlib.md5(system_msg.encode()).hexdigest()[:8]
-
-    # Check if we already have this exact prompt
-    existing = _LEARNED_PROMPTS.get(model_id, {})
-    if existing.get("hash") == prompt_hash:
-        return None  # Already learned
-
-    # Save the new prompt
-    _LEARNED_PROMPTS[model_id] = {
-        "hash": prompt_hash,
-        "length": len(system_msg),
-        "prompt": system_msg
-    }
-    save_learned_prompts()
-    print(f"[patches] Learned system prompt for '{model_id}' ({len(system_msg)} chars)")
-    return system_msg
-
-
-def get_learned_prompt(model_id: str) -> str:
-    """Get the learned system prompt for a model."""
-    if not _LEARNED_PROMPTS:
-        load_learned_prompts()
-    entry = _LEARNED_PROMPTS.get(model_id, {})
-    return entry.get("prompt")
-
-
-def warmup_with_learned_prompt(model_id: str):
-    """Warmup model with learned system prompt if available."""
-    prompt = get_learned_prompt(model_id)
-    if not prompt:
-        return None
-
-    print(f"[patches] Warming up '{model_id}' with learned prompt ({len(prompt)} chars)...")
-
-    from mlx_omni_server.chat.mlx.chat_generator import ChatGenerator
-    wrapper = ChatGenerator.get_or_create(model_id=model_id)
-
-    messages = [{"role": "system", "content": prompt}]
-    result = wrapper.generate(
-        messages=messages,
-        max_tokens=1,
-        enable_prompt_cache=True
-    )
-
-    tokens = result.stats.prompt_tokens if result.stats else 0
-    print(f"[patches] Warmed up KV cache: {tokens} tokens")
-    return tokens
-
-
 def apply_patches():
     """Apply all necessary patches to mlx-omni-server."""
     _patch_mlx_lm_utils()
     _patch_chat_generator()
-    _patch_openai_adapter()
     _patch_chat_template_tools()  # Enable tool parsing for Qwen CLI
 
 
@@ -319,28 +223,6 @@ def _patch_chat_generator():
         return original_get_or_create.__func__(cls, resolved_model_id, adapter_path, draft_model_id)
 
     ChatGenerator.get_or_create = patched_get_or_create
-
-
-def _patch_openai_adapter():
-    """
-    Patch OpenAI adapter to learn system prompts from requests.
-    """
-    from mlx_omni_server.chat.openai.openai_adapter import OpenAIAdapter
-
-    original_prepare = OpenAIAdapter._prepare_generation_params
-
-    def patched_prepare(self, request):
-        """Wrapper that learns system prompts from requests."""
-        params = original_prepare(self, request)
-
-        # Learn system prompt from messages
-        messages = params.get("messages", [])
-        model_id = request.model
-        learn_system_prompt(model_id, messages)
-
-        return params
-
-    OpenAIAdapter._prepare_generation_params = patched_prepare
 
 
 def _patch_chat_template_tools():
