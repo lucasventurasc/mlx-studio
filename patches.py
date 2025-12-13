@@ -205,6 +205,21 @@ def get_draft_model_for(model_id: str) -> str:
     return None
 
 
+def get_tier_config(tier: str) -> dict:
+    """Get the configuration for a specific tier (haiku/sonnet/opus).
+
+    Args:
+        tier: One of 'haiku', 'sonnet', 'opus'
+
+    Returns:
+        Dict with 'model', 'draft_model', 'backend' keys, or empty dict if not found
+    """
+    if not _ROUTING_CONFIG:
+        load_routing_config()
+
+    return _ROUTING_CONFIG.get("tiers", {}).get(tier, {})
+
+
 def apply_patches():
     """Apply all necessary patches to mlx-omni-server."""
     _patch_mlx_lm_utils()

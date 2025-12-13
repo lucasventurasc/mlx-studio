@@ -364,12 +364,28 @@ class GGUFBackend:
             payload["tools"] = tools
             payload["tool_choice"] = "auto"
 
+        # Log request size for debugging context length issues
+        import json as json_module
+        payload_str = json_module.dumps(payload)
+        logger.info(f"GGUF request: {len(messages)} messages, {len(payload_str)} bytes, max_tokens={max_tokens}")
+        if len(payload_str) > 100000:  # ~25k tokens roughly
+            logger.warning(f"Large payload detected ({len(payload_str)} bytes) - may exceed context limit")
+
         async with client.stream(
             "POST",
             f"{self.server_url}/v1/chat/completions",
             json=payload,
         ) as response:
-            response.raise_for_status()
+            if response.status_code >= 400:
+                # Read error body for better error message
+                error_body = await response.aread()
+                try:
+                    error_json = json.loads(error_body)
+                    error_msg = error_json.get("error", {}).get("message", error_body.decode())
+                except Exception:
+                    error_msg = error_body.decode()
+                logger.error(f"llama-server error {response.status_code}: {error_msg}")
+                raise RuntimeError(f"llama-server error: {error_msg}")
 
             async for line in response.aiter_lines():
                 if not line:

@@ -94,6 +94,28 @@ export function GGUFTab() {
         return parts[parts.length - 1] || path;
     };
 
+    // Extract context size from default_args array
+    const getContextSize = (args) => {
+        if (!args || !Array.isArray(args)) return 32768;
+        const idx = args.findIndex(a => a === '-c' || a === '--ctx-size');
+        if (idx !== -1 && args[idx + 1]) {
+            return parseInt(args[idx + 1]) || 32768;
+        }
+        return 32768;
+    };
+
+    // Update context size in default_args
+    const handleContextSizeChange = useCallback(async (size) => {
+        const args = [...(config?.default_args || [])];
+        const idx = args.findIndex(a => a === '-c' || a === '--ctx-size');
+        if (idx !== -1) {
+            args[idx + 1] = String(size);
+        } else {
+            args.push('-c', String(size));
+        }
+        await handleConfigChange('default_args', args);
+    }, [config, handleConfigChange]);
+
     if (loading) {
         return html`<div class="settings-tab-content"><p>Loading...</p></div>`;
     }
@@ -172,6 +194,27 @@ export function GGUFTab() {
                             role="switch"
                             aria-checked=${config?.auto_start}
                         ></div>
+                    </div>
+
+                    <div class="setting-row">
+                        <${SettingLabel}
+                            label="Context Size"
+                            hint="Maximum context window size (8K-128K tokens). Larger = more memory usage."
+                        />
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <input
+                                type="range"
+                                style="width: 140px;"
+                                min="8192"
+                                max="131072"
+                                step="8192"
+                                value=${getContextSize(config?.default_args)}
+                                onInput=${e => handleContextSizeChange(parseInt(e.target.value))}
+                            />
+                            <span style="font-family: monospace; font-size: 13px; min-width: 50px;">
+                                ${Math.round(getContextSize(config?.default_args) / 1024)}K
+                            </span>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -298,11 +341,12 @@ export function GGUFTab() {
             <section class="settings-card">
                 <h3 class="settings-card-title">Tips</h3>
                 <ul style="font-size: 13px; color: var(--fg-2); margin: 0; padding-left: 20px;">
+                    <li><strong>Context Size:</strong> Use 64K+ for Claude Code (large tool definitions)</li>
                     <li><code>-ngl 99</code> - Use GPU for all layers (faster)</li>
                     <li><code>-fa auto</code> - Enable Flash Attention</li>
-                    <li><code>-c 32768</code> - Context size (32K tokens)</li>
                     <li>Speculative decoding works best when draft model is from same family</li>
                     <li>For Qwen models, use Qwen2-0.5B as draft</li>
+                    <li><strong>Restart server</strong> after changing context size</li>
                 </ul>
             </section>
         </div>

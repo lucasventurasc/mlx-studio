@@ -177,7 +177,7 @@
 }
 
 /* Prefer system color scheme - inherits from [data-theme="light"] */
-@media (prefers-color-scheme: light) {
+@media (prefers-color-scheme: light) and :root:not([data-theme="dark"]):not([data-theme="pink"]) {
     :root:not([data-theme="dark"]) {
         /* Backgrounds - Light theme with subtle cool tint */
         --bg-0: #f7f9fc;

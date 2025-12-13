@@ -2,8 +2,7 @@
 const { html, useState, useEffect } = window.preact;
 import { useStore, actions } from '../hooks/useStore.js';
 import { InferenceTab } from './settings/InferenceTab.js';
-import { RoutingTab } from './settings/RoutingTab.js';
-import { AliasesTab } from './settings/AliasesTab.js';
+import { ModelsTab } from './settings/ModelsTab.js';
 import { CacheTab } from './settings/CacheTab.js';
 import { AppearanceTab } from './settings/AppearanceTab.js';
 import { RemotesTab } from './settings/RemotesTab.js';
@@ -11,9 +10,8 @@ import { GGUFTab } from './settings/GGUFTab.js';
 
 const TABS = [
     { id: 'inference', label: 'Inference', icon: 'zap' },
-    { id: 'routing', label: 'Model Routing', icon: 'git-branch' },
-    { id: 'gguf', label: 'GGUF Backend', icon: 'cpu' },
-    { id: 'aliases', label: 'Aliases', icon: 'tag' },
+    { id: 'models', label: 'Models', icon: 'git-branch' },
+    { id: 'gguf', label: 'GGUF', icon: 'cpu' },
     { id: 'remotes', label: 'Remotes', icon: 'globe' },
     { id: 'cache', label: 'Cache', icon: 'database' },
     { id: 'appearance', label: 'Appearance', icon: 'palette' },
@@ -39,8 +37,7 @@ export function SettingsModal() {
     const renderTabContent = () => {
         switch (activeTab) {
             case 'inference': return html`<${InferenceTab} />`;
-            case 'routing': return html`<${RoutingTab} />`;
-            case 'aliases': return html`<${AliasesTab} />`;
+            case 'models': return html`<${ModelsTab} />`;
             case 'remotes': return html`<${RemotesTab} />`;
             case 'cache': return html`<${CacheTab} />`;
             case 'appearance': return html`<${AppearanceTab} />`;

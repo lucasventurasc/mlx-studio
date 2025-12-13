@@ -328,7 +328,10 @@ IMPORTANT TOOL USE GUIDELINES:
         # Extract response
         choice = result.get("choices", [{}])[0]
         message = choice.get("message", {})
+        # Only use content field (reasoning_content is internal thinking, not shown)
         content_text = message.get("content", "")
+        # But keep reasoning for tool parsing
+        reasoning_text = message.get("reasoning_content", "")
 
         # Parse tool calls from text or from response
         tool_calls = []
@@ -352,9 +355,10 @@ IMPORTANT TOOL USE GUIDELINES:
                         input=args,
                     )
                 )
-        elif content_text:
-            # Try parsing from text (Qwen XML format)
-            parsed = self._parse_tool_calls(content_text)
+        else:
+            # Try parsing tool calls from content or reasoning text (Qwen XML format)
+            full_text = reasoning_text + content_text
+            parsed = self._parse_tool_calls(full_text)
             for tc in parsed:
                 tool_calls.append(
                     ToolUseBlock(
@@ -413,20 +417,46 @@ IMPORTANT TOOL USE GUIDELINES:
             Anthropic streaming events
         """
         import asyncio
+        import queue
+        import threading
 
-        # Run async generator in sync context
-        loop = asyncio.new_event_loop()
-        try:
-            async_gen = self._generate_stream_async(request, temp_boost)
+        # Use a queue to pass events from async to sync
+        event_queue = queue.Queue()
+        done_event = threading.Event()
+        error_holder = [None]
 
-            while True:
+        def run_async():
+            """Run the async generator in a new thread with its own event loop."""
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
                 try:
-                    event = loop.run_until_complete(async_gen.__anext__())
-                    yield event
-                except StopAsyncIteration:
-                    break
-        finally:
-            loop.close()
+                    async def collect_events():
+                        async for event in self._generate_stream_async(request, temp_boost):
+                            event_queue.put(event)
+                    loop.run_until_complete(collect_events())
+                finally:
+                    loop.close()
+            except Exception as e:
+                error_holder[0] = e
+            finally:
+                done_event.set()
+
+        # Start async collection in background thread
+        thread = threading.Thread(target=run_async, daemon=True)
+        thread.start()
+
+        # Yield events as they arrive
+        while not done_event.is_set() or not event_queue.empty():
+            try:
+                event = event_queue.get(timeout=0.1)
+                yield event
+            except queue.Empty:
+                continue
+
+        # Check for errors
+        if error_holder[0]:
+            raise error_holder[0]
 
     async def _generate_stream_async(
         self, request: MessagesRequest, temp_boost: float = 0.0
@@ -487,47 +517,106 @@ IMPORTANT TOOL USE GUIDELINES:
         completion_tokens = 0
 
         # Stream from llama-server
-        async for chunk in self.backend.generate_stream(
-            messages=messages,
-            tools=tools,
-            max_tokens=request.max_tokens or self._default_max_tokens,
-            temperature=temperature,
-            top_p=top_p,
-        ):
-            # Extract delta content
-            choices = chunk.get("choices", [])
-            if not choices:
-                continue
+        try:
+            stream = self.backend.generate_stream(
+                messages=messages,
+                tools=tools,
+                max_tokens=request.max_tokens or self._default_max_tokens,
+                temperature=temperature,
+                top_p=top_p,
+            )
+        except Exception as e:
+            logger.error(f"Failed to start GGUF stream: {e}")
+            # Emit error as text and end gracefully
+            yield MessageStreamEvent(
+                type=StreamEventType.CONTENT_BLOCK_START,
+                index=0,
+                content_block=TextBlock(text=""),
+            )
+            yield MessageStreamEvent(
+                type=StreamEventType.CONTENT_BLOCK_DELTA,
+                index=0,
+                delta=StreamDelta(type="text_delta", text=f"[GGUF Error: {e}]"),
+            )
+            yield MessageStreamEvent(
+                type=StreamEventType.CONTENT_BLOCK_STOP,
+                index=0,
+            )
+            yield MessageStreamEvent(
+                type=StreamEventType.MESSAGE_DELTA,
+                delta=StreamDelta(stop_reason=StopReason.END_TURN),
+                usage=Usage(input_tokens=0, output_tokens=0),
+            )
+            yield MessageStreamEvent(type=StreamEventType.MESSAGE_STOP)
+            return
 
-            choice = choices[0]
-            delta = choice.get("delta", {})
-            content_delta = delta.get("content", "")
-            finish = choice.get("finish_reason")
+        chunk_count = 0
+        try:
+            async for chunk in stream:
+                chunk_count += 1
 
-            if finish:
-                finish_reason = finish
+                # Track usage from final chunk (may have empty choices)
+                usage_data = chunk.get("usage", {})
+                if usage_data:
+                    prompt_tokens = usage_data.get("prompt_tokens", prompt_tokens)
+                    completion_tokens = usage_data.get("completion_tokens", completion_tokens)
 
-            # Track usage from final chunk
-            usage_data = chunk.get("usage", {})
-            if usage_data:
-                prompt_tokens = usage_data.get("prompt_tokens", prompt_tokens)
-                completion_tokens = usage_data.get("completion_tokens", completion_tokens)
+                # Extract delta content
+                choices = chunk.get("choices", [])
+                if not choices:
+                    continue
 
-            if not content_delta:
-                continue
+                choice = choices[0]
+                delta = choice.get("delta", {})
 
-            # Accumulate text
-            accumulated_text += content_delta
+                # Get both content types
+                # - content: regular response content (shown to user)
+                # - reasoning_content: internal "thinking" (gpt-oss style, NOT shown to user)
+                content_delta = delta.get("content", "")
+                reasoning_delta = delta.get("reasoning_content", "")
 
-            # Check for tool call XML
-            if "<function=" in accumulated_text or "<tool_call>" in accumulated_text:
-                in_tool_call_xml = True
+                finish = choice.get("finish_reason")
 
-            # If we're in tool call mode, don't stream the XML
-            if in_tool_call_xml:
-                continue
+                if finish:
+                    finish_reason = finish
 
-            # Start text block if needed
+                # Accumulate reasoning for tool parsing (but don't stream it)
+                if reasoning_delta:
+                    accumulated_text += reasoning_delta
+
+                # Only stream actual content (not reasoning/thinking)
+                if not content_delta:
+                    continue
+
+                # Accumulate content for tool parsing too
+                accumulated_text += content_delta
+
+                # Check for tool call XML
+                if "<function=" in accumulated_text or "<tool_call>" in accumulated_text:
+                    in_tool_call_xml = True
+
+                # If we're in tool call mode, don't stream the XML
+                if in_tool_call_xml:
+                    continue
+
+                # Start text block if needed
+                if not text_block_started:
+                    yield MessageStreamEvent(
+                        type=StreamEventType.CONTENT_BLOCK_START,
+                        index=current_block_index,
+                        content_block=TextBlock(text=""),
+                    )
+                    text_block_started = True
+
+                # Stream text delta
+                yield MessageStreamEvent(
+                    type=StreamEventType.CONTENT_BLOCK_DELTA,
+                    index=current_block_index,
+                    delta=StreamDelta(type="text_delta", text=content_delta),
+                )
+        except Exception as e:
+            # Handle disconnection during streaming (e.g., llama-server restart)
+            logger.warning(f"GGUF stream interrupted after {chunk_count} chunks: {e}")
             if not text_block_started:
                 yield MessageStreamEvent(
                     type=StreamEventType.CONTENT_BLOCK_START,
@@ -535,13 +624,20 @@ IMPORTANT TOOL USE GUIDELINES:
                     content_block=TextBlock(text=""),
                 )
                 text_block_started = True
-
-            # Stream text delta
             yield MessageStreamEvent(
                 type=StreamEventType.CONTENT_BLOCK_DELTA,
                 index=current_block_index,
-                delta=StreamDelta(type="text_delta", text=content_delta),
+                delta=StreamDelta(type="text_delta", text=f"\n[Stream interrupted: {e}]"),
             )
+
+        # Log completion stats
+        logger.info(f"GGUF stream completed: {chunk_count} chunks, {len(accumulated_text)} chars accumulated, text_block_started={text_block_started}, in_tool_call_xml={in_tool_call_xml}")
+        if accumulated_text:
+            # Show preview of accumulated text for debugging
+            preview = accumulated_text[:200].replace('\n', '\\n')
+            logger.info(f"GGUF accumulated preview: '{preview}...'")
+            if '<function=' in accumulated_text or '<tool_call>' in accumulated_text:
+                logger.info("GGUF detected tool call XML in response")
 
         # End text block if started
         if text_block_started:
@@ -557,6 +653,24 @@ IMPORTANT TOOL USE GUIDELINES:
             parsed = self._parse_tool_calls(accumulated_text)
             for tc in parsed:
                 tool_calls.append(tc)
+            logger.info(f"GGUF parsed {len(tool_calls)} tool calls from accumulated text")
+        else:
+            logger.warning("GGUF stream produced no accumulated text - model may have generated empty response")
+
+        # If we have tool calls but never started a text block, emit an empty one first
+        # This ensures the response always has at least some content before tools
+        if tool_calls and not text_block_started:
+            logger.info("GGUF emitting empty text block before tool calls (model generated tools-only response)")
+            yield MessageStreamEvent(
+                type=StreamEventType.CONTENT_BLOCK_START,
+                index=current_block_index,
+                content_block=TextBlock(text=""),
+            )
+            yield MessageStreamEvent(
+                type=StreamEventType.CONTENT_BLOCK_STOP,
+                index=current_block_index,
+            )
+            current_block_index += 1
 
         # Emit tool use blocks
         if tool_calls:

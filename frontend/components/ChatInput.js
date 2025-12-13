@@ -281,7 +281,6 @@ export function ChatInput() {
         }
     }, [handleSend, handleCancel, isGenerating]);
 
-    const disabled = isGenerating || !currentModel;
     const displayStats = liveStats || stats;
 
     return html`
@@ -297,7 +296,6 @@ export function ChatInput() {
                             onInput=${e => setValue(e.target.value)}
                             onKeyDown=${handleKeyDown}
                             rows="1"
-                            disabled=${isGenerating}
                         />
                         <div class="chat-input-bottom">
                             <div class="chat-input-hints">

@@ -11,9 +11,9 @@
     "-fa",
     "auto",
     "-c",
-    "32768"
+    "131072"
   ],
-  "current_model": null,
+  "current_model": "/Users/lucasventura/.lmstudio/models/unsloth/gpt-oss-20b-GGUF/gpt-oss-20b-Q4_K_M.gguf",
   "draft_model": null,
   "draft_n": 32,
   "draft_p_min": 0.8

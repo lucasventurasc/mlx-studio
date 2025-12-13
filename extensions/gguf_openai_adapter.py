@@ -52,6 +52,7 @@ class GGUFOpenAIAdapter:
         - Converts reasoning_content to reasoning (schema field name)
         - Ensures role is always present in delta (when delta has content)
         - Extracts tokens_per_second from timings field
+        - Normalizes tool_calls to have required fields (id, function.name)
 
         Args:
             chunk: Raw chunk from llama-server
@@ -79,6 +80,22 @@ class GGUFOpenAIAdapter:
             # Convert reasoning_content to reasoning (llama-server uses different field name)
             if "reasoning_content" in delta:
                 delta["reasoning"] = delta.pop("reasoning_content")
+
+            # Normalize tool_calls - llama-server sends incremental chunks
+            # where only first chunk has id/name, subsequent only have arguments
+            if "tool_calls" in delta:
+                for tool_call in delta["tool_calls"]:
+                    # Ensure id is present (use index as fallback)
+                    if "id" not in tool_call:
+                        idx = tool_call.get("index", 0)
+                        tool_call["id"] = f"call_{idx}"
+                    # Ensure type is present
+                    if "type" not in tool_call:
+                        tool_call["type"] = "function"
+                    # Ensure function.name is present
+                    if "function" in tool_call:
+                        if "name" not in tool_call["function"]:
+                            tool_call["function"]["name"] = ""
 
             # Ensure role is always present in delta (required by ChatMessage schema)
             # But only if delta has actual content - empty delta {} should get role too
@@ -202,6 +219,12 @@ class GGUFOpenAIAdapter:
             tools = [tool.model_dump() for tool in request.tools]
 
         # Stream from llama-server
+        chunk_count = 0
+        accumulated_content = ""
+        accumulated_reasoning = ""
+        has_tool_calls = False
+        finish_reason = None
+
         async for chunk in self.backend.generate_stream(
             messages=messages,
             tools=tools,
@@ -209,8 +232,31 @@ class GGUFOpenAIAdapter:
             temperature=request.temperature or 0.7,
             top_p=request.top_p or 0.9,
         ):
+            chunk_count += 1
+
+            # Track what we're receiving for debugging
+            choices = chunk.get("choices", [])
+            if choices:
+                delta = choices[0].get("delta", {})
+                if delta.get("content"):
+                    accumulated_content += delta["content"]
+                if delta.get("reasoning_content"):
+                    accumulated_reasoning += delta["reasoning_content"]
+                if delta.get("tool_calls"):
+                    has_tool_calls = True
+                if choices[0].get("finish_reason"):
+                    finish_reason = choices[0]["finish_reason"]
+
             # Normalize chunk before validation
             # llama-server may send reasoning_content without role in delta
             chunk = self._normalize_chunk(chunk)
             # Parse chunk into our schema
             yield ChatCompletionChunk.model_validate(chunk)
+
+        # Log what we received
+        logger.info(f"GGUF OpenAI stream completed: {chunk_count} chunks, content={len(accumulated_content)} chars, reasoning={len(accumulated_reasoning)} chars, has_tool_calls={has_tool_calls}, finish_reason={finish_reason}")
+        if not accumulated_content and not has_tool_calls:
+            logger.warning("GGUF OpenAI stream produced no content and no tool calls - potential empty response")
+        if accumulated_content:
+            preview = accumulated_content[:150].replace('\n', '\\n')
+            logger.debug(f"GGUF OpenAI content preview: '{preview}...'")
