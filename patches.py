@@ -79,6 +79,32 @@ def _detect_claude_tier(model_id: str) -> str:
     return "sonnet"  # Default to sonnet if unknown
 
 
+def _detect_backend(model_path: str, tier_config: dict = None) -> str:
+    """Detect which backend to use for a model.
+
+    Args:
+        model_path: Resolved model path
+        tier_config: Tier configuration dict (may contain 'backend' key)
+
+    Returns:
+        Backend type: 'mlx' or 'gguf'
+    """
+    # 1. Check tier config for explicit backend
+    if tier_config and tier_config.get("backend"):
+        return tier_config["backend"]
+
+    # 2. Check file extension
+    if model_path.endswith(".gguf"):
+        return "gguf"
+
+    # 3. Check if path looks like GGUF (contains .gguf anywhere)
+    if ".gguf" in model_path.lower():
+        return "gguf"
+
+    # Default to MLX
+    return "mlx"
+
+
 def resolve_alias(model_id: str) -> str:
     """Resolve a model alias to its full path, with Claude routing and wildcard support.
 
@@ -86,17 +112,38 @@ def resolve_alias(model_id: str) -> str:
     - claude-haiku-* matches claude-haiku-4-5-20251001, claude-haiku-3, etc.
     - claude-* matches any claude model
     - qwen* matches qwen3, qwen2.5, etc.
+
+    Note: For backend detection, use resolve_alias_with_backend() instead.
+    """
+    resolved, _ = resolve_alias_with_backend(model_id)
+    return resolved
+
+
+def resolve_alias_with_backend(model_id: str) -> tuple:
+    """Resolve a model alias and determine the backend to use.
+
+    Supports wildcards using fnmatch patterns:
+    - claude-haiku-* matches claude-haiku-4-5-20251001, claude-haiku-3, etc.
+    - claude-* matches any claude model
+    - qwen* matches qwen3, qwen2.5, etc.
+
+    Returns:
+        Tuple of (resolved_model_id, backend_type)
+        backend_type is 'mlx' or 'gguf'
     """
     if not _MODEL_ALIASES:
         load_aliases()
     if not _ROUTING_CONFIG:
         load_routing_config()
 
+    tier_config = None
+
     # 1. Direct alias match (highest priority - exact match)
     if model_id in _MODEL_ALIASES:
         resolved = _MODEL_ALIASES[model_id]
-        print(f"[patches] Resolved alias '{model_id}' -> '{resolved}'")
-        return resolved
+        backend = _detect_backend(resolved)
+        print(f"[patches] Resolved alias '{model_id}' -> '{resolved}' (backend={backend})")
+        return resolved, backend
 
     # 2. Wildcard pattern matching in aliases
     # Check each alias key to see if it's a pattern that matches model_id
@@ -104,8 +151,9 @@ def resolve_alias(model_id: str) -> str:
         # Only check patterns that contain wildcards
         if '*' in pattern or '?' in pattern:
             if fnmatch.fnmatch(model_id, pattern):
-                print(f"[patches] Resolved wildcard alias '{pattern}' for '{model_id}' -> '{target}'")
-                return target
+                backend = _detect_backend(target)
+                print(f"[patches] Resolved wildcard alias '{pattern}' for '{model_id}' -> '{target}' (backend={backend})")
+                return target, backend
 
     # 3. Claude model routing (for claude-* models not matched by aliases)
     if model_id.startswith("claude-"):
@@ -118,22 +166,27 @@ def resolve_alias(model_id: str) -> str:
             tier_model = tier_config.get("model")
 
             if tier_model:
-                print(f"[patches] Routed Claude '{model_id}' ({tier}) -> '{tier_model}'")
-                return tier_model
+                backend = _detect_backend(tier_model, tier_config)
+                print(f"[patches] Routed Claude '{model_id}' ({tier}) -> '{tier_model}' (backend={backend})")
+                return tier_model, backend
 
         # Fallback to default_model from routing config
         default_model = _ROUTING_CONFIG.get("default_model")
         if default_model:
-            print(f"[patches] Routed Claude '{model_id}' (default) -> '{default_model}'")
-            return default_model
+            backend = _detect_backend(default_model)
+            print(f"[patches] Routed Claude '{model_id}' (default) -> '{default_model}' (backend={backend})")
+            return default_model, backend
 
         # Final fallback to aliases
         fallback = _MODEL_ALIASES.get("qwen3-coder-30b") or _MODEL_ALIASES.get("qwen")
         if fallback:
-            print(f"[patches] Resolved Claude model '{model_id}' -> '{fallback}' (fallback)")
-            return fallback
+            backend = _detect_backend(fallback)
+            print(f"[patches] Resolved Claude model '{model_id}' -> '{fallback}' (fallback, backend={backend})")
+            return fallback, backend
 
-    return model_id
+    # No resolution - detect backend from original model_id
+    backend = _detect_backend(model_id)
+    return model_id, backend
 
 
 def get_draft_model_for(model_id: str) -> str:

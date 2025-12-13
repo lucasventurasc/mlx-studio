@@ -224,8 +224,21 @@ export function VoiceMode() {
                         responseText += chunk;
                         pendingText += chunk;
 
-                        // Show response
-                        setLastResponse(responseText);
+                        // Filter out <think>...</think> blocks from pending text
+                        // Some models generate thinking even with enable_thinking: false
+                        pendingText = pendingText.replace(/<think>[\s\S]*?<\/think>/g, '');
+                        // Also handle unclosed think tags (still thinking)
+                        if (pendingText.includes('<think>') && !pendingText.includes('</think>')) {
+                            // Don't process until think block closes
+                            const thinkStart = pendingText.indexOf('<think>');
+                            pendingText = pendingText.slice(0, thinkStart);
+                        }
+
+                        // Show response (but filter thinking for display too)
+                        const displayText = responseText
+                            .replace(/<think>[\s\S]*?<\/think>/g, '')
+                            .replace(/<think>[\s\S]*$/, ''); // Remove unclosed think
+                        setLastResponse(displayText);
 
                         // If TTS disabled for this request, just accumulate
                         if (!enableTTS) return;

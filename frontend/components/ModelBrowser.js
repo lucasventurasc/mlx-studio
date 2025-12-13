@@ -16,6 +16,7 @@ export function ModelBrowser() {
     const [activeTab, setActiveTab] = useState('local');
     const [isSearching, setIsSearching] = useState(false);
     const [downloadProgress, setDownloadProgress] = useState({});
+    const [backendFilter, setBackendFilter] = useState('all'); // 'all', 'mlx', 'gguf'
 
     // Load local models on mount and tab change
     useEffect(() => {
@@ -23,6 +24,13 @@ export function ModelBrowser() {
             loadLocalModels();
         }
     }, [show, activeTab]);
+
+    // Re-search when backend filter changes (if we have results)
+    useEffect(() => {
+        if (show && activeTab === 'search' && searchResults.length > 0) {
+            handleSearch();
+        }
+    }, [backendFilter]);
 
     const loadLocalModels = useCallback(async () => {
         try {
@@ -34,20 +42,20 @@ export function ModelBrowser() {
     }, []);
 
     const handleSearch = useCallback(async () => {
-        const query = searchQuery.trim() || 'mlx-community';
+        const query = searchQuery.trim() || 'Qwen';
         setIsSearching(true);
 
         try {
-            const data = await endpoints.hfSearch(query, 20);
+            const data = await endpoints.hfSearch(query, 30, backendFilter);
             setSearchResults(data.results || []);
-            actions.addLog('info', `Found ${data.results?.length || 0} models for "${query}"`);
+            actions.addLog('info', `Found ${data.results?.length || 0} models for "${query}" (${backendFilter})`);
         } catch (e) {
             actions.addLog('error', `HF search failed: ${e.message}`);
             showToast('Search failed. Check server logs.');
         }
 
         setIsSearching(false);
-    }, [searchQuery]);
+    }, [searchQuery, backendFilter]);
 
     const handleDownload = useCallback(async (repoId) => {
         setDownloadProgress(prev => ({
@@ -168,7 +176,7 @@ export function ModelBrowser() {
                     <div class="browser-search" style="padding: 0 0 var(--space-3) 0; border: none;">
                         <input
                             type="text"
-                            placeholder="Search MLX models..."
+                            placeholder="Search models..."
                             value=${searchQuery}
                             onInput=${e => setSearchQuery(e.target.value)}
                             onKeyDown=${e => e.key === 'Enter' && handleSearch()}
@@ -177,6 +185,23 @@ export function ModelBrowser() {
                             <${SearchIcon} size=${14} /> ${isSearching ? '...' : 'Search'}
                         </button>
                     </div>
+                    <div style="display: flex; gap: 4px; margin-bottom: var(--space-3);">
+                        <button
+                            class="btn ${backendFilter === 'all' ? 'btn-primary' : 'btn-secondary'}"
+                            style="flex: 1; font-size: 11px; padding: 4px 8px;"
+                            onClick=${() => setBackendFilter('all')}
+                        >All</button>
+                        <button
+                            class="btn ${backendFilter === 'mlx' ? 'btn-primary' : 'btn-secondary'}"
+                            style="flex: 1; font-size: 11px; padding: 4px 8px;"
+                            onClick=${() => setBackendFilter('mlx')}
+                        >MLX</button>
+                        <button
+                            class="btn ${backendFilter === 'gguf' ? 'btn-primary' : 'btn-secondary'}"
+                            style="flex: 1; font-size: 11px; padding: 4px 8px;"
+                            onClick=${() => setBackendFilter('gguf')}
+                        >GGUF</button>
+                    </div>
 
                     ${isSearching ? html`
                         <div style="text-align: center; padding: 40px; color: var(--fg-2);">
@@ -184,7 +209,7 @@ export function ModelBrowser() {
                         </div>
                     ` : searchResults.length === 0 ? html`
                         <div style="text-align: center; padding: 40px; color: var(--fg-2);">
-                            <p>Search for MLX models on HuggingFace</p>
+                            <p>Search for MLX & GGUF models</p>
                             <p style="font-size: 11px; margin-top: 8px;">
                                 Try: "Qwen", "Llama", "DeepSeek", "Mistral"
                             </p>
@@ -228,10 +253,15 @@ function ModelCard({ model, progress, isDownloaded, onDownload }) {
             </div>
 
             <div class="model-card-tags">
+                ${model.backend && html`
+                    <span class="model-tag ${model.backend === 'gguf' ? 'gguf' : 'mlx'}"
+                          style="background: ${model.backend === 'gguf' ? 'var(--warning)' : 'var(--accent)'}; color: ${model.backend === 'gguf' ? '#000' : '#fff'};"
+                    >${model.backend.toUpperCase()}</span>
+                `}
                 ${model.quantization && html`
                     <span class="model-tag quant">${model.quantization}</span>
                 `}
-                ${(model.tags || []).slice(0, 3).map(t => html`
+                ${(model.tags || []).slice(0, 2).map(t => html`
                     <span class="model-tag">${t}</span>
                 `)}
             </div>

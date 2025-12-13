@@ -14,6 +14,14 @@ install:
 	PATH="$(HOME)/.cargo/bin:$(PATH)" $(PIP) install mlx-omni-server || $(PIP) install mlx-omni-server --no-deps
 	$(PIP) install 'litellm[proxy]'
 	$(PIP) install --upgrade 'fastapi>=0.116.1,<0.117' 'uvicorn>=0.34.0,<0.35' 'python-multipart>=0.0.20,<0.0.21' 'rich>=13.9.4' 'soundfile>=0.13.1'
+	$(PIP) install httpx  # For GGUF backend proxy
+	@# Install llama.cpp for GGUF support (optional but recommended)
+	@if command -v brew >/dev/null 2>&1; then \
+		echo "Installing llama.cpp via Homebrew..."; \
+		brew install llama.cpp 2>/dev/null || brew upgrade llama.cpp 2>/dev/null || true; \
+	else \
+		echo "⚠️  Homebrew not found. Install llama.cpp manually for GGUF support: https://github.com/ggml-org/llama.cpp"; \
+	fi
 	@echo "✅ Installation complete"
 
 # Run server (backend + frontend + LiteLLM)

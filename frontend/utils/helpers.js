@@ -118,106 +118,68 @@ export function getCurrentThinking(text) {
     return null;
 }
 
-// Markdown renderer with syntax highlighting
+// Markdown renderer using marked.js with syntax highlighting
 export function renderMarkdown(text) {
     // First, handle <markdown> tags - extract and process their content
     text = text.replace(/<markdown>([\s\S]*?)<\/markdown>/g, (match, content) => {
-        return content; // Just extract the content, it will be processed below
+        return content;
     });
 
-    // Extract code blocks first to protect them from other processing
-    const codeBlocks = [];
-    text = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (match, lang, code) => {
-        const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
-        codeBlocks.push({ lang, code: code.trim() });
-        return placeholder;
-    });
+    // Configure marked
+    if (window.marked) {
+        // Custom renderer for code blocks with syntax highlighting
+        const renderer = new window.marked.Renderer();
 
-    let html = escapeHtml(text);
+        renderer.code = function(code, language) {
+            // Handle both old and new marked API
+            const codeText = typeof code === 'object' ? code.text : code;
+            const lang = typeof code === 'object' ? code.lang : language;
 
-    // Restore code blocks with syntax highlighting
-    html = html.replace(/__CODE_BLOCK_(\d+)__/g, (match, index) => {
-        const { lang, code } = codeBlocks[parseInt(index)];
-        const langLabel = lang ? `<span class="code-lang">${lang}</span>` : '';
-        let highlightedCode;
-        try {
-            if (lang && window.hljs?.getLanguage(lang)) {
-                highlightedCode = window.hljs.highlight(code, { language: lang }).value;
-            } else {
-                highlightedCode = window.hljs?.highlightAuto(code).value || escapeHtml(code);
+            const langLabel = lang ? `<span class="code-lang">${escapeHtml(lang)}</span>` : '';
+            let highlightedCode;
+            try {
+                if (lang && window.hljs?.getLanguage(lang)) {
+                    highlightedCode = window.hljs.highlight(codeText, { language: lang }).value;
+                } else if (window.hljs) {
+                    highlightedCode = window.hljs.highlightAuto(codeText).value;
+                } else {
+                    highlightedCode = escapeHtml(codeText);
+                }
+            } catch (e) {
+                highlightedCode = escapeHtml(codeText);
             }
-        } catch (e) {
-            highlightedCode = escapeHtml(code);
-        }
-        return `<div class="code-block"><div class="code-header">${langLabel}<button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').textContent)">Copy</button></div><code class="hljs">${highlightedCode}</code></div>`;
-    });
+            return `<div class="code-block"><div class="code-header">${langLabel}<button class="code-copy" onclick="navigator.clipboard.writeText(this.closest('.code-block').querySelector('code').textContent)">Copy</button></div><code class="hljs">${highlightedCode}</code></div>`;
+        };
 
-    // Headings (must be at start of line)
-    html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
-    html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-    html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-    html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+        renderer.codespan = function(code) {
+            const codeText = typeof code === 'object' ? code.text : code;
+            return `<code class="inline-code">${escapeHtml(codeText)}</code>`;
+        };
 
-    // Horizontal rules
-    html = html.replace(/^---+$/gm, '<hr>');
-    html = html.replace(/^\*\*\*+$/gm, '<hr>');
+        renderer.link = function(href, title, text) {
+            // Handle both old and new marked API
+            const url = typeof href === 'object' ? href.href : href;
+            const linkTitle = typeof href === 'object' ? href.title : title;
+            const linkText = typeof href === 'object' ? href.text : text;
 
-    // Unordered lists (- or *)
-    // Process list items to proper <li> tags within <ul>
-    html = html.replace(/(?:^|\n)((?:[-*] .+\n?)+)/gm, (match, listContent) => {
-        const items = listContent.trim().split('\n').map(item => {
-            const text = item.replace(/^[-*] /, '').trim();
-            return `<li>${text}</li>`;
-        }).join('');
-        return `\n<ul>${items}</ul>\n`;
-    });
+            const titleAttr = linkTitle ? ` title="${escapeHtml(linkTitle)}"` : '';
+            return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener"${titleAttr}>${linkText}</a>`;
+        };
 
-    // Numbered lists
-    html = html.replace(/(?:^|\n)((?:\d+\. .+\n?)+)/gm, (match, listContent) => {
-        const items = listContent.trim().split('\n').map(item => {
-            const text = item.replace(/^\d+\. /, '').trim();
-            return `<li>${text}</li>`;
-        }).join('');
-        return `\n<ol>${items}</ol>\n`;
-    });
+        window.marked.setOptions({
+            renderer,
+            gfm: true,        // GitHub Flavored Markdown (tables, strikethrough, etc.)
+            breaks: true,     // Convert \n to <br>
+            pedantic: false,
+            sanitize: false,  // We trust model output
+            smartypants: false
+        });
 
-    // Inline code (after code blocks to avoid conflicts)
-    html = html.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+        return window.marked.parse(text);
+    }
 
-    // Bold (using ** or __)
-    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-    html = html.replace(/__([^_]+)__/g, '<strong>$1</strong>');
-
-    // Italic (using * or _) - be careful not to match ** or __
-    html = html.replace(/(?<!\*)\*(?!\*)([^*]+)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
-    html = html.replace(/(?<!_)_(?!_)([^_]+)(?<!_)_(?!_)/g, '<em>$1</em>');
-
-    // Strikethrough
-    html = html.replace(/~~([^~]+)~~/g, '<del>$1</del>');
-
-    // Citation references [1], [2], etc. - make them into small badges
-    html = html.replace(/\[(\d+)\](?!\()/g, '<span class="citation-ref" title="Source $1">[$1]</span>');
-
-    // Links [text](url)
-    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-
-    // Blockquotes (> at start of line)
-    html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
-    // Merge consecutive blockquotes
-    html = html.replace(/<\/blockquote>\n<blockquote>/g, '\n');
-
-    // Convert newlines to <br> for paragraph breaks
-    // But not before or after block elements, and avoid double breaks
-    html = html.replace(/\n\n+/g, '<br><br>'); // Multiple newlines to double break
-    html = html.replace(/\n(?!<)/g, '<br>'); // Single newlines to single break
-
-    // Clean up extra breaks around block elements
-    html = html.replace(/<br>(<(?:ul|ol|h[1-6]|blockquote|hr|div))/g, '$1');
-    html = html.replace(/(<\/(?:ul|ol|h[1-6]|blockquote|div)>)<br>/g, '$1');
-    // Remove breaks at the very start
-    html = html.replace(/^<br>/, '');
-
-    return html;
+    // Fallback if marked not loaded - basic escaping
+    return escapeHtml(text).replace(/\n/g, '<br>');
 }
 
 // Presets for generation

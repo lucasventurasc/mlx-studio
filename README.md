@@ -112,6 +112,18 @@ curl http://localhost:1234/anthropic/v1/messages \
   -d '{"model": "claude-sonnet-4-20250514", "max_tokens": 1024, "messages": [{"role": "user", "content": "Hello"}]}'
 ```
 
+## Benchmarks (M2 Ultra 64GB)
+
+MLX is **14-32% faster** than GGUF on Apple Silicon:
+
+| Model | MLX 4bit | GGUF Q4_K_M | Difference |
+|-------|----------|-------------|------------|
+| Qwen3-1.7B | 253 tok/s | 192 tok/s | +32% |
+| Qwen3-4B | 145 tok/s | 116 tok/s | +25% |
+| Qwen3-Coder-30B-A3B | 87 tok/s | 76 tok/s | +14% |
+
+See [benchmarks/](./benchmarks/) for detailed results.
+
 ## Requirements
 
 - macOS with Apple Silicon (M1/M2/M3/M4)

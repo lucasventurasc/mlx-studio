@@ -17,6 +17,7 @@ import { CommandPalette } from './components/CommandPalette.js';
 import { NetworkModal } from './components/NetworkModal.js';
 import { ModelComparator } from './components/ModelComparator.js';
 import { VoiceMode } from './components/VoiceMode.js';
+import { StatsPanel } from './components/StatsPanel.js';
 
 // Offline screen component
 function OfflineScreen() {
@@ -149,6 +150,7 @@ export function App() {
             <${CommandPalette} />
             <${NetworkModal} />
             <${ModelComparator} />
+            <${StatsPanel} />
 
             <div class="toast" id="toast"></div>
         </div>
@@ -173,10 +175,34 @@ async function loadModels() {
 
         actions.setModels(models);
 
-        // If user had a model selected that's no longer available, clear it
+        // Check if the saved currentModel is actually loaded on the server
         const currentModel = getStore().currentModel;
-        if (currentModel && !models.find(m => m.id === currentModel.id)) {
-            actions.setCurrentModel(null);
+        if (currentModel) {
+            // Model not in available list - clear it
+            const freshModel = models.find(m => m.id === currentModel.id);
+            if (!freshModel) {
+                actions.setCurrentModel(null);
+            } else {
+                // Model exists but check if it's actually loaded in memory
+                try {
+                    const loadedData = await endpoints.loadedModels();
+                    const loadedIds = (loadedData.loaded || []).map(m => m.model_id);
+                    // Check both id and path (GGUF models use path as model_id)
+                    const isLoaded = loadedIds.includes(currentModel.id) ||
+                                    (currentModel.path && loadedIds.includes(currentModel.path));
+                    if (!isLoaded) {
+                        // Model was saved but server was restarted - clear the state
+                        actions.setCurrentModel(null);
+                    } else {
+                        // Update currentModel with fresh data (e.g., capabilities)
+                        // This ensures we have the latest capabilities even if localStorage had stale data
+                        actions.setCurrentModel(freshModel);
+                    }
+                } catch {
+                    // If we can't check, assume not loaded
+                    actions.setCurrentModel(null);
+                }
+            }
         }
 
         actions.setConnected(true);

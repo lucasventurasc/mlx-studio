@@ -75,6 +75,7 @@ const defaultSettings = {
     contextLength: 32768,
     streamEnabled: true,
     enableThinking: true,  // Enable thinking mode for Qwen3 and similar models
+    thinkingBudget: 0,     // Max thinking tokens (0 = unlimited)
     systemPrompt: ''
 };
 
@@ -133,6 +134,16 @@ const initialState = {
     showNetworkModal: false,
     showModelComparator: false,
     showVoiceMode: false,
+    showStatsPanel: false,
+
+    // Model performance stats (rolling history)
+    modelStats: {
+        requests: [],        // Array of { timestamp, model, tokens, tps, ttft, duration, cacheHit }
+        sessionStart: Date.now(),
+        totalTokens: 0,
+        totalRequests: 0,
+        cacheHits: 0
+    },
 
     // Voice Mode
     voiceSettings: { ...defaultVoiceSettings },
@@ -379,6 +390,40 @@ export const actions = {
         showModelBrowser: false,
         showModelComparator: false,
         showVoiceMode: false
+    }),
+
+    // Stats Panel
+    toggleStatsPanel: () => updateStore(s => ({ showStatsPanel: !s.showStatsPanel })),
+    recordRequestStats: (stats) => updateStore(s => {
+        const newRequest = {
+            timestamp: Date.now(),
+            model: stats.model || s.currentModel?.name || 'unknown',
+            tokens: stats.tokens || 0,
+            tps: stats.tps || 0,
+            ttft: stats.ttft || null,
+            duration: stats.duration || 0,
+            cacheHit: stats.cacheHit || false,
+            promptTokens: stats.promptTokens || 0
+        };
+        const requests = [...s.modelStats.requests, newRequest].slice(-100); // Keep last 100
+        return {
+            modelStats: {
+                ...s.modelStats,
+                requests,
+                totalTokens: s.modelStats.totalTokens + newRequest.tokens,
+                totalRequests: s.modelStats.totalRequests + 1,
+                cacheHits: s.modelStats.cacheHits + (newRequest.cacheHit ? 1 : 0)
+            }
+        };
+    }),
+    resetStats: () => updateStore({
+        modelStats: {
+            requests: [],
+            sessionStart: Date.now(),
+            totalTokens: 0,
+            totalRequests: 0,
+            cacheHits: 0
+        }
     }),
 
     // Voice Mode

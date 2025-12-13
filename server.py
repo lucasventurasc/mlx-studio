@@ -535,7 +535,7 @@ def set_routing_config(config: RoutingConfig):
 
 
 @app.post("/api/routing/tier/{tier_name}")
-def set_tier_model(tier_name: str, model: Optional[str] = None, draft_model: Optional[str] = None):
+def set_tier_model(tier_name: str, model: Optional[str] = None, draft_model: Optional[str] = None, backend: Optional[str] = None):
     """Set model for a specific tier (haiku/sonnet/opus)."""
     config = load_routing_config()
 
@@ -544,6 +544,8 @@ def set_tier_model(tier_name: str, model: Optional[str] = None, draft_model: Opt
 
     config["tiers"][tier_name]["model"] = model
     config["tiers"][tier_name]["draft_model"] = draft_model
+    if backend:
+        config["tiers"][tier_name]["backend"] = backend
 
     save_routing_config(config)
 
@@ -551,18 +553,19 @@ def set_tier_model(tier_name: str, model: Optional[str] = None, draft_model: Opt
     from patches import reload_routing_config
     reload_routing_config()
 
-    logger.info(f"Set {tier_name} -> model={model}, draft={draft_model}")
-    return {"status": "updated", "tier": tier_name, "model": model, "draft_model": draft_model}
+    logger.info(f"Set {tier_name} -> model={model}, draft={draft_model}, backend={backend}")
+    return {"status": "updated", "tier": tier_name, "model": model, "draft_model": draft_model, "backend": backend}
 
 
 @app.get("/api/routing/resolve/{model_id:path}")
 def resolve_model_routing(model_id: str):
     """Preview how a model ID would be resolved with current routing config."""
-    from patches import resolve_alias
-    resolved = resolve_alias(model_id)
+    from patches import resolve_alias_with_backend
+    resolved, backend = resolve_alias_with_backend(model_id)
     return {
         "original": model_id,
         "resolved": resolved,
+        "backend": backend,
         "is_claude": model_id.startswith("claude-")
     }
 
@@ -778,6 +781,106 @@ def health():
 
 
 # =============================================================================
+# GGUF Backend (llama-server integration)
+# =============================================================================
+
+from extensions.gguf_backend import gguf_server, load_gguf_config, save_gguf_config
+
+
+class GGUFConfigUpdate(BaseModel):
+    enabled: Optional[bool] = None
+    port: Optional[int] = None
+    auto_start: Optional[bool] = None
+    llama_server_path: Optional[str] = None
+    default_args: Optional[list] = None
+    # Speculative decoding settings
+    draft_model: Optional[str] = None
+    draft_n: Optional[int] = None
+    draft_p_min: Optional[float] = None
+
+
+@app.get("/api/gguf/config")
+def get_gguf_config():
+    """Get GGUF backend configuration."""
+    return load_gguf_config()
+
+
+@app.post("/api/gguf/config")
+def update_gguf_config(update: GGUFConfigUpdate):
+    """Update GGUF backend configuration."""
+    config = load_gguf_config()
+
+    if update.enabled is not None:
+        config["enabled"] = update.enabled
+    if update.port is not None:
+        config["port"] = update.port
+    if update.auto_start is not None:
+        config["auto_start"] = update.auto_start
+    if update.llama_server_path is not None:
+        config["llama_server_path"] = update.llama_server_path
+    if update.default_args is not None:
+        config["default_args"] = update.default_args
+    # Speculative decoding settings
+    if update.draft_model is not None:
+        config["draft_model"] = update.draft_model if update.draft_model else None
+    if update.draft_n is not None:
+        config["draft_n"] = update.draft_n
+    if update.draft_p_min is not None:
+        config["draft_p_min"] = update.draft_p_min
+
+    save_gguf_config(config)
+    gguf_server.reload_config()
+    return {"status": "updated", "config": config}
+
+
+@app.get("/api/gguf/status")
+def get_gguf_status():
+    """Get GGUF server status."""
+    return gguf_server.get_status()
+
+
+@app.post("/api/gguf/start")
+def start_gguf_server(model_path: str, port: Optional[int] = None):
+    """Start llama-server with specified GGUF model.
+
+    Args:
+        model_path: Path to GGUF model file
+        port: Server port (default from config)
+    """
+    try:
+        result = gguf_server.start(model_path, port)
+        return result
+    except FileNotFoundError as e:
+        return {"status": "error", "error": str(e)}
+    except RuntimeError as e:
+        return {"status": "error", "error": str(e)}
+    except TimeoutError as e:
+        return {"status": "error", "error": str(e)}
+
+
+@app.post("/api/gguf/stop")
+def stop_gguf_server():
+    """Stop llama-server."""
+    return gguf_server.stop()
+
+
+@app.get("/api/gguf/health")
+async def gguf_health_check():
+    """Check if llama-server is healthy."""
+    from extensions.gguf_backend import GGUFBackend
+
+    if not gguf_server.is_running():
+        return {"healthy": False, "reason": "not_running"}
+
+    backend = GGUFBackend(gguf_server.server_url)
+    try:
+        healthy = await backend.health_check()
+        return {"healthy": healthy, "server_url": gguf_server.server_url}
+    finally:
+        await backend.close()
+
+
+# =============================================================================
 # Web Proxy (for URL fetching from frontend)
 # =============================================================================
 
@@ -971,7 +1074,7 @@ def _get_model_capabilities(model_path: str) -> dict:
 
 @app.get("/api/models/local")
 def list_local_models():
-    """List all MLX models downloaded locally with capabilities."""
+    """List all MLX and GGUF models downloaded locally with capabilities."""
     models = model_manager.list_local_models()
     return {
         "models": [
@@ -982,7 +1085,8 @@ def list_local_models():
                 "size_bytes": m.size_bytes,
                 "quantization": m.quantization,
                 "path": m.path,
-                "capabilities": _get_model_capabilities(m.path)
+                "backend": "mlx" if m.is_mlx else "gguf",
+                "capabilities": _get_model_capabilities(m.path) if m.is_mlx else {}
             }
             for m in models
         ],
@@ -992,75 +1096,120 @@ def list_local_models():
 
 
 @app.post("/api/models/load")
-def load_model(model_id: str, warmup_prompt: str = None):
+def load_model(model_id: str, warmup_prompt: str = None, draft_model: str = None):
     """Pre-load a model into memory cache with optional prompt warmup.
 
     This is the only safe way to load models - prevents concurrent GPU access.
     Must be called before making chat/completion requests to a model.
+
+    Automatically detects GGUF models and routes to llama-server backend.
+
+    Args:
+        model_id: Model ID or path to load
+        warmup_prompt: Optional prompt for KV cache warmup
+        draft_model: Optional draft model for speculative decoding (MLX only)
     """
     import time
-    from mlx_omni_server.chat.mlx.chat_generator import ChatGenerator
+    from patches import resolve_alias_with_backend, get_draft_model_for, resolve_alias
+    from extensions.gguf_backend import gguf_server
 
-    # Use global lock to prevent concurrent model loading
-    with _mlx_lock:
-        start = time.time()
-        try:
-            # Check if model exists locally (LM Studio or HuggingFace cache)
-            local_models = model_manager.list_local_models()
-            local_model = next((m for m in local_models if m.id == model_id), None)
+    start = time.time()
 
-            # Use local path if available
-            load_path = local_model.path if local_model else model_id
-            logger.info(f"Pre-loading model: {model_id} from {load_path}")
+    try:
+        # Check if model exists locally (LM Studio or HuggingFace cache)
+        local_models = model_manager.list_local_models()
+        local_model = next((m for m in local_models if m.id == model_id), None)
 
-            wrapper = ChatGenerator.get_or_create(model_id=load_path)
-            model_time = time.time() - start
-            logger.info(f"Model loaded in {model_time:.1f}s: {model_id}")
+        # Use local path if available
+        load_path = local_model.path if local_model else model_id
 
-            warmup_time = 0
-            warmup_tokens = 0
+        # Resolve alias and detect backend
+        resolved_path, backend = resolve_alias_with_backend(load_path)
 
-            # Warmup with system prompt if provided
-            if warmup_prompt:
-                warmup_start = time.time()
-                logger.info(f"Warming up KV cache with prompt ({len(warmup_prompt)} chars)...")
+        # Get draft model from config if not provided (MLX only)
+        if backend == "mlx" and draft_model is None:
+            draft_model = get_draft_model_for(model_id)
+        if draft_model:
+            draft_model = resolve_alias(draft_model)
+        logger.info(f"Pre-loading model: {model_id} -> {resolved_path} (backend={backend})")
 
-                # Generate 1 token to build KV cache for the system prompt
-                messages = [{"role": "system", "content": warmup_prompt}]
-                result = wrapper.generate(
-                    messages=messages,
-                    max_tokens=1,
-                    enable_prompt_cache=True
-                )
-                warmup_time = time.time() - warmup_start
-                warmup_tokens = result.stats.prompt_tokens if result.stats else 0
-                logger.info(f"KV cache warmed: {warmup_tokens} tokens in {warmup_time:.1f}s")
-
+        if backend == "gguf":
+            # Load GGUF model via llama-server
+            result = gguf_server.start(resolved_path)
             elapsed = time.time() - start
+
             return {
-                "status": "loaded",
+                "status": result.get("status", "loaded"),
                 "model_id": model_id,
-                "path": load_path,
+                "path": resolved_path,
+                "backend": "gguf",
                 "time": round(elapsed, 2),
-                "warmup": {
-                    "enabled": warmup_prompt is not None,
-                    "tokens": warmup_tokens,
-                    "time": round(warmup_time, 2)
-                } if warmup_prompt else None
+                "port": result.get("port"),
+                "warmup": None  # GGUF doesn't support KV cache warmup via this endpoint
             }
-        except Exception as e:
-            logger.error(f"Failed to load model {model_id}: {e}")
-            return {"status": "error", "model_id": model_id, "error": str(e)}
+        else:
+            # Load MLX model
+            from mlx_omni_server.chat.mlx.chat_generator import ChatGenerator
+
+            # Log draft model if configured
+            if draft_model:
+                logger.info(f"Pre-loading model: {model_id} -> {resolved_path} with draft={draft_model}")
+
+            # Use global lock to prevent concurrent model loading
+            with _mlx_lock:
+                wrapper = ChatGenerator.get_or_create(
+                    model_id=resolved_path,
+                    draft_model_id=draft_model
+                )
+                model_time = time.time() - start
+                logger.info(f"Model loaded in {model_time:.1f}s: {model_id}" + (f" (draft: {draft_model})" if draft_model else ""))
+
+                warmup_time = 0
+                warmup_tokens = 0
+
+                # Warmup with system prompt if provided
+                if warmup_prompt:
+                    warmup_start = time.time()
+                    logger.info(f"Warming up KV cache with prompt ({len(warmup_prompt)} chars)...")
+
+                    # Generate 1 token to build KV cache for the system prompt
+                    messages = [{"role": "system", "content": warmup_prompt}]
+                    result = wrapper.generate(
+                        messages=messages,
+                        max_tokens=1,
+                        enable_prompt_cache=True
+                    )
+                    warmup_time = time.time() - warmup_start
+                    warmup_tokens = result.stats.prompt_tokens if result.stats else 0
+                    logger.info(f"KV cache warmed: {warmup_tokens} tokens in {warmup_time:.1f}s")
+
+                elapsed = time.time() - start
+                return {
+                    "status": "loaded",
+                    "model_id": model_id,
+                    "path": resolved_path,
+                    "backend": "mlx",
+                    "time": round(elapsed, 2),
+                    "warmup": {
+                        "enabled": warmup_prompt is not None,
+                        "tokens": warmup_tokens,
+                        "time": round(warmup_time, 2)
+                    } if warmup_prompt else None
+                }
+    except Exception as e:
+        logger.error(f"Failed to load model {model_id}: {e}")
+        return {"status": "error", "model_id": model_id, "error": str(e)}
 
 
 @app.get("/api/models/loaded")
 def get_loaded_models():
-    """Get list of currently loaded models in memory."""
+    """Get list of currently loaded models in memory (MLX and GGUF)."""
     from mlx_omni_server.chat.mlx.wrapper_cache import wrapper_cache
+    from extensions.gguf_backend import gguf_server
 
     cache_info = wrapper_cache.get_cache_info()
 
-    # Parse the cached_keys to extract model IDs
+    # Parse the cached_keys to extract model IDs (MLX models)
     loaded_models = []
     for key_str in cache_info.get("cached_keys", []):
         # Key format: WrapperCacheKey(model_id='...', adapter_path=..., draft_model_id=...)
@@ -1071,8 +1220,17 @@ def get_loaded_models():
             model_id = key_str[start:end]
             loaded_models.append({
                 "model_id": model_id,
+                "backend": "mlx",
                 "key": key_str
             })
+
+    # Check for GGUF model loaded in llama-server
+    if gguf_server.is_running() and gguf_server.current_model:
+        loaded_models.append({
+            "model_id": gguf_server.current_model,
+            "backend": "gguf",
+            "port": gguf_server.port
+        })
 
     return {
         "loaded": loaded_models,
@@ -1083,14 +1241,25 @@ def get_loaded_models():
 
 @app.post("/api/models/unload")
 def unload_model(model_id: str = None):
-    """Unload model(s) from memory cache and free GPU memory."""
+    """Unload model(s) from memory cache and free GPU memory.
+
+    Supports both MLX and GGUF backends.
+    """
     import gc
     import mlx.core as mx
     from mlx_omni_server.chat.mlx.wrapper_cache import wrapper_cache
+    from extensions.gguf_backend import gguf_server
 
     # Use lock to prevent unloading during generation
     with _mlx_lock:
         try:
+            # Stop GGUF server if running
+            gguf_stopped = False
+            if gguf_server.is_running():
+                gguf_server.stop()
+                gguf_stopped = True
+                logger.info("Stopped llama-server (GGUF backend)")
+
             # Clear the wrapper cache (ChatGenerator instances)
             wrapper_cache.clear_cache()
 
@@ -1111,17 +1280,27 @@ def unload_model(model_id: str = None):
             mx.metal.clear_cache()
 
             logger.info("Unloaded all models and cleared GPU memory")
-            return {"status": "cleared", "message": "All models unloaded and GPU memory freed"}
+            return {
+                "status": "cleared",
+                "message": "All models unloaded and GPU memory freed",
+                "gguf_stopped": gguf_stopped
+            }
         except Exception as e:
             logger.error(f"Failed to unload model: {e}")
             return {"status": "error", "error": str(e)}
 
 
 @app.get("/api/models/search")
-def search_models(q: str = "MLX", limit: int = 20):
-    """Search for MLX models on HuggingFace."""
-    results = model_manager.search_hf_models(q, limit)
-    return {"results": results, "query": q}
+def search_models(q: str = "", limit: int = 20, backend: str = "all"):
+    """Search for MLX and GGUF models on HuggingFace.
+
+    Args:
+        q: Search query
+        limit: Max results (default 20)
+        backend: Filter by backend - "mlx", "gguf", or "all" (default)
+    """
+    results = model_manager.search_hf_models(q, limit, backend)
+    return {"results": results, "query": q, "backend": backend}
 
 
 @app.get("/api/models/info/{author}/{model}")

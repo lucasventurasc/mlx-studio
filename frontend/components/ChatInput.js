@@ -2,7 +2,7 @@
 const { html, useState, useRef, useEffect, useCallback } = window.preact;
 import { useStore, actions, showToast, getStore } from '../hooks/useStore.js';
 import { endpoints } from '../utils/api.js';
-import { SendIcon, ZapIcon, StopIcon } from './Icons.js';
+import { SendIcon, ZapIcon, StopIcon, BrainIcon } from './Icons.js';
 
 export function ChatInput() {
     const { currentModel, isGenerating, settings, currentChatId, chats, currentProfile } = useStore(s => ({
@@ -84,8 +84,9 @@ export function ChatInput() {
 
         const startTime = Date.now();
         let responseText = '';
-        let finalStats = { tokens: 0, tps: 0, cache_hit: false };
+        let finalStats = { tokens: 0, tps: 0, cache_hit: false, ttft: null };
         let wasCancelled = false;
+        let ttftRecorded = false;
 
         try {
             const store = getStore();
@@ -118,20 +119,8 @@ export function ChatInput() {
             // Use local path if available, otherwise use model ID
             const modelPath = currentModel.path || currentModel.id;
 
-            // Check if model supports thinking mode from model capabilities
-            // Capabilities come from model config files (tokenizer_config.json has <think> token)
-            // Note: Qwen3-Coder models have <think> token but thinking mode causes issues
-            let supportsThinking = false;
-            if (currentModel.capabilities?.supports_thinking && settings.enableThinking) {
-                // Skip thinking for Coder models - they have the token but it doesn't work properly
-                const isCoderModel = currentModel.name?.toLowerCase().includes('coder');
-                if (!isCoderModel) {
-                    supportsThinking = true;
-                    console.log('[ChatInput] Model supports thinking mode:', currentModel.name);
-                } else {
-                    console.log('[ChatInput] Skipping thinking mode for Coder model:', currentModel.name);
-                }
-            }
+            // Check if this is a Coder model (they have <think> token but it doesn't work properly)
+            const isCoderModel = currentModel.name?.toLowerCase().includes('coder');
 
             if (settings.streamEnabled) {
                 let firstChunk = true;
@@ -148,9 +137,16 @@ export function ChatInput() {
                         stream_options: { include_usage: true }
                     };
 
-                    // Add thinking mode for supported models
-                    if (supportsThinking) {
-                        requestBody.extra_body = { enable_thinking: true };
+                    // For models that support thinking:
+                    // - When enableThinking is true: don't send anything, let model use default behavior with <think> tags
+                    // - When enableThinking is false: explicitly disable thinking to suppress <think> tags
+                    if (currentModel.capabilities?.supports_thinking && !isCoderModel) {
+                        if (!settings.enableThinking) {
+                            requestBody.extra_body = { enable_thinking: false };
+                        } else if (settings.thinkingBudget > 0) {
+                            // Add thinking budget if set (limits reasoning length)
+                            requestBody.extra_body = { thinking_budget: settings.thinkingBudget };
+                        }
                     }
 
                     await endpoints.chatStream(requestBody,
@@ -158,8 +154,14 @@ export function ChatInput() {
                     (delta) => {
                         if (firstChunk) {
                             firstChunk = false;
-                            setLiveStats(s => ({ ...s, processing: false }));
-                            actions.addLog('info', 'First token received, streaming...');
+                            // Record Time to First Token
+                            if (!ttftRecorded) {
+                                const ttft = Date.now() - startTime;
+                                finalStats.ttft = ttft;
+                                ttftRecorded = true;
+                                setLiveStats(s => ({ ...s, processing: false, ttft }));
+                                actions.addLog('info', `First token in ${(ttft / 1000).toFixed(2)}s`);
+                            }
                         }
                         responseText += delta;
                         actions.updateLastMessage(responseText);
@@ -195,9 +197,15 @@ export function ChatInput() {
                     stream: false
                 };
 
-                // Add thinking mode for supported models
-                if (supportsThinking) {
-                    requestBody.extra_body = { enable_thinking: true };
+                // For models that support thinking:
+                // - When enableThinking is true: don't send anything, let model use default behavior with <think> tags
+                // - When enableThinking is false: explicitly disable thinking to suppress <think> tags
+                if (currentModel.capabilities?.supports_thinking && !isCoderModel) {
+                    if (!settings.enableThinking) {
+                        requestBody.extra_body = { enable_thinking: false };
+                    } else if (settings.thinkingBudget > 0) {
+                        requestBody.extra_body = { thinking_budget: settings.thinkingBudget };
+                    }
                 }
 
                 const result = await endpoints.chat(requestBody);
@@ -215,10 +223,23 @@ export function ChatInput() {
                 tokens: finalStats.tokens,
                 time: elapsed.toFixed(1),
                 tps: finalStats.tps.toFixed(1),
-                cache_hit: finalStats.cache_hit
+                cache_hit: finalStats.cache_hit,
+                ttft: finalStats.ttft
             });
             setLiveStats(null);
-            actions.addLog('info', `Response: ${finalStats.tokens} tokens in ${elapsed.toFixed(1)}s (${finalStats.tps.toFixed(1)} tok/s)${finalStats.cache_hit ? ' [cache hit]' : ''}`);
+
+            // Record stats for performance monitoring
+            actions.recordRequestStats({
+                model: currentModel?.name,
+                tokens: finalStats.tokens,
+                tps: finalStats.tps,
+                ttft: finalStats.ttft,
+                duration: elapsed * 1000,
+                cacheHit: finalStats.cache_hit
+            });
+
+            const ttftStr = finalStats.ttft ? ` TTFT: ${(finalStats.ttft / 1000).toFixed(2)}s` : '';
+            actions.addLog('info', `Response: ${finalStats.tokens} tokens in ${elapsed.toFixed(1)}s (${finalStats.tps.toFixed(1)} tok/s)${finalStats.cache_hit ? ' [cache hit]' : ''}${ttftStr}`);
 
         } catch (error) {
             // Check if cancelled
@@ -280,6 +301,23 @@ export function ChatInput() {
                         />
                         <div class="chat-input-bottom">
                             <div class="chat-input-hints">
+                                ${(() => {
+                                    // Show reasoning toggle only for models that support it AND are not Coder models
+                                    const supportsThinking = currentModel?.capabilities?.supports_thinking;
+                                    const isCoderModel = currentModel?.name?.toLowerCase().includes('coder');
+                                    const showToggle = supportsThinking && !isCoderModel;
+
+                                    return showToggle && html`
+                                        <button
+                                            class="reasoning-toggle ${settings.enableThinking ? 'active' : ''}"
+                                            onClick=${() => actions.updateSettings({ enableThinking: !settings.enableThinking })}
+                                            title=${settings.enableThinking ? 'Reasoning enabled - click to disable' : 'Enable reasoning mode'}
+                                        >
+                                            <${BrainIcon} size=${14} />
+                                            <span>Reasoning</span>
+                                        </button>
+                                    `;
+                                })()}
                                 <span><kbd>Enter</kbd> send</span>
                                 <span><kbd>Shift + Enter</kbd> new line</span>
                             </div>
@@ -312,6 +350,11 @@ export function ChatInput() {
                                         ${stats && html`
                                             <span class="stat-item">
                                                 <strong>${stats.time}</strong>s
+                                            </span>
+                                        `}
+                                        ${displayStats.ttft && html`
+                                            <span class="stat-item ttft" title="Time to First Token">
+                                                <strong>${(displayStats.ttft / 1000).toFixed(2)}</strong>s TTFT
                                             </span>
                                         `}
                                     </div>

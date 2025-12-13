@@ -1,0 +1,20 @@
+{
+  "enabled": true,
+  "server_url": "http://127.0.0.1:8080",
+  "port": 8080,
+  "auto_start": true,
+  "llama_server_path": "llama-server",
+  "default_args": [
+    "--jinja",
+    "-ngl",
+    "99",
+    "-fa",
+    "auto",
+    "-c",
+    "32768"
+  ],
+  "current_model": null,
+  "draft_model": null,
+  "draft_n": 32,
+  "draft_p_min": 0.8
+}

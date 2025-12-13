@@ -6,7 +6,7 @@ import {
     BrainIcon, SettingsIcon, ChatIcon, PackageIcon,
     LockIcon, GlobeIcon, ChevronDownIcon, ColumnsIcon,
     SearchIcon, EjectIcon, MenuIcon, XIcon, TagIcon, CheckIcon,
-    MicrophoneIcon
+    MicrophoneIcon, ActivityIcon
 } from './Icons.js';
 
 // Easter egg: Matrix rain animation
@@ -308,6 +308,9 @@ export function TopBar() {
             <div class="topbar-actions topbar-actions-desktop">
                 <${ApiBadge} networkMode=${networkMode} networkAddresses=${networkAddresses} onClick=${actions.openNetworkModal} />
                 <${StatusPill} connected=${connected} loading=${loading} />
+                <button class="btn btn-icon" onClick=${actions.toggleStatsPanel} title="Performance Stats">
+                    <${ActivityIcon} size=${18} />
+                </button>
                 <button class="btn btn-icon" onClick=${actions.toggleVoiceMode} title="Voice Mode">
                     <${MicrophoneIcon} size=${18} />
                 </button>
@@ -337,6 +340,10 @@ export function TopBar() {
                         <div class="topbar-menu-item" onClick=${() => { actions.toggleChats(); setMenuOpen(false); }}>
                             <${ChatIcon} size=${16} />
                             <span>Chats</span>
+                        </div>
+                        <div class="topbar-menu-item" onClick=${() => { actions.toggleStatsPanel(); setMenuOpen(false); }}>
+                            <${ActivityIcon} size=${16} />
+                            <span>Performance Stats</span>
                         </div>
                         <div class="topbar-menu-item" onClick=${() => { actions.toggleVoiceMode(); setMenuOpen(false); }}>
                             <${MicrophoneIcon} size=${16} />
@@ -372,6 +379,7 @@ function ModelDropdown({ currentModel, models, isLoadingModel }) {
     const [showAliasInput, setShowAliasInput] = useState(false);
     const [aliasName, setAliasName] = useState('');
     const [loadedModelIds, setLoadedModelIds] = useState([]);
+    const [backendFilter, setBackendFilter] = useState('all'); // 'all', 'mlx', 'gguf'
     const dropdownRef = useRef(null);
     const inputRef = useRef(null);
     const aliasInputRef = useRef(null);
@@ -397,11 +405,14 @@ function ModelDropdown({ currentModel, models, isLoadingModel }) {
         return a.name.localeCompare(b.name);
     });
 
-    // Filter models based on search
-    const filteredModels = sortedModels.filter(m =>
-        m.name.toLowerCase().includes(search.toLowerCase()) ||
-        m.id.toLowerCase().includes(search.toLowerCase())
-    );
+    // Filter models based on search and backend filter
+    const filteredModels = sortedModels.filter(m => {
+        const matchesSearch = m.name.toLowerCase().includes(search.toLowerCase()) ||
+            m.id.toLowerCase().includes(search.toLowerCase());
+        const matchesBackend = backendFilter === 'all' ||
+            (m.backend || 'mlx') === backendFilter;
+        return matchesSearch && matchesBackend;
+    });
 
     // Check if a model is loaded
     const isModelLoaded = (model) => {
@@ -578,6 +589,32 @@ function ModelDropdown({ currentModel, models, isLoadingModel }) {
                         />
                     </div>
 
+                    <div class="model-filter-tabs">
+                        <button
+                            class="model-filter-tab ${backendFilter === 'all' ? 'active' : ''}"
+                            onClick=${(e) => { e.stopPropagation(); setBackendFilter('all'); }}
+                        >
+                            <span class="filter-label">All</span>
+                            <span class="filter-count">${models.length}</span>
+                        </button>
+                        <button
+                            class="model-filter-tab ${backendFilter === 'mlx' ? 'active' : ''}"
+                            onClick=${(e) => { e.stopPropagation(); setBackendFilter('mlx'); }}
+                        >
+                            <span class="filter-icon mlx">◆</span>
+                            <span class="filter-label">MLX</span>
+                            <span class="filter-count">${models.filter(m => (m.backend || 'mlx') === 'mlx').length}</span>
+                        </button>
+                        <button
+                            class="model-filter-tab ${backendFilter === 'gguf' ? 'active' : ''}"
+                            onClick=${(e) => { e.stopPropagation(); setBackendFilter('gguf'); }}
+                        >
+                            <span class="filter-icon gguf">●</span>
+                            <span class="filter-label">GGUF</span>
+                            <span class="filter-count">${models.filter(m => m.backend === 'gguf').length}</span>
+                        </button>
+                    </div>
+
                     <div class="model-dropdown-list">
                         ${filteredModels.length === 0 ? html`
                             <div class="model-dropdown-empty">
@@ -586,20 +623,27 @@ function ModelDropdown({ currentModel, models, isLoadingModel }) {
                         ` : filteredModels.map((model, idx) => {
                             const loaded = isModelLoaded(model);
                             const isActive = model.id === currentModel?.id;
+                            const backend = model.backend || 'mlx';
                             return html`
                                 <div
                                     class="model-dropdown-item ${isActive ? 'active' : ''} ${idx === selectedIndex ? 'selected' : ''} ${loaded ? 'loaded' : ''}"
                                     onClick=${() => selectModel(model)}
                                     onMouseEnter=${() => setSelectedIndex(idx)}
                                 >
-                                    <${BrainIcon} size=${16} />
+                                    <span class="model-backend-indicator ${backend}"></span>
                                     <div class="model-dropdown-item-info">
                                         <span class="model-dropdown-item-name">${model.name}</span>
-                                        <span class="model-dropdown-item-meta">${model.vram}</span>
+                                        <span class="model-dropdown-item-meta">${model.size || model.vram}</span>
                                     </div>
-                                    ${loaded && html`
-                                        <span class="model-dropdown-item-badge">loaded</span>
-                                    `}
+                                    <div class="model-tags">
+                                        ${model.quantization && html`
+                                            <span class="model-tag quant">${model.quantization}</span>
+                                        `}
+                                        <span class="model-tag backend ${backend}">${backend.toUpperCase()}</span>
+                                        ${loaded && html`
+                                            <span class="model-tag loaded">● loaded</span>
+                                        `}
+                                    </div>
                                 </div>
                             `;
                         })}
@@ -636,6 +680,13 @@ function ApiBadge({ networkMode, networkAddresses, onClick }) {
         } else {
             // Fall back to first address if no non-local found
             localIp = networkAddresses[0].ip || '127.0.0.1';
+        }
+    } else if (networkAddresses && networkAddresses.length === 0) {
+        // If addresses array is empty, we might still want to show the actual host
+        // This handles the case where network detection hasn't populated yet
+        const host = window.location.hostname;
+        if (host && host !== 'localhost' && host !== '127.0.0.1') {
+            localIp = host;
         }
     }
 

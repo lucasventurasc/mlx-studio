@@ -1,0 +1,613 @@
+"""
+GGUF Anthropic Adapter for MLX Studio
+
+Provides Anthropic Messages API compatibility for GGUF models via llama-server.
+Converts between Anthropic format and OpenAI format, handles streaming,
+and parses tool calls using the same Qwen parser as MLX backend.
+"""
+
+import json
+import logging
+import re
+import uuid
+from typing import Any, AsyncGenerator, Dict, Generator, List, Optional
+
+from .gguf_backend import GGUFBackend
+
+logger = logging.getLogger("mlx-studio.gguf")
+
+# Import Anthropic schema types
+import sys
+from pathlib import Path
+
+# Add vendor path for mlx-omni-server imports
+VENDOR_PATH = Path(__file__).parent.parent / "vendor" / "mlx-omni-server" / "src"
+if str(VENDOR_PATH) not in sys.path:
+    sys.path.insert(0, str(VENDOR_PATH))
+
+from mlx_omni_server.chat.anthropic.anthropic_schema import (
+    AnthropicTool,
+    ContentBlock,
+    InputMessage,
+    MessagesRequest,
+    MessagesResponse,
+    MessageStreamEvent,
+    RequestTextBlock,
+    RequestToolResultBlock,
+    RequestToolUseBlock,
+    StopReason,
+    StreamDelta,
+    StreamEventType,
+    SystemPrompt,
+    TextBlock,
+    ThinkingBlock,
+    ToolUseBlock,
+    Usage,
+)
+
+
+class GGUFAnthropicAdapter:
+    """Anthropic Messages API adapter for GGUF backend via llama-server.
+
+    Handles:
+    - Converting Anthropic messages to OpenAI format
+    - Converting Anthropic tools to OpenAI format
+    - Streaming responses with proper Anthropic event format
+    - Parsing tool calls from response text (Qwen XML format)
+    """
+
+    def __init__(self, backend: GGUFBackend):
+        """Initialize adapter with GGUF backend.
+
+        Args:
+            backend: GGUFBackend instance connected to llama-server
+        """
+        self.backend = backend
+        self._default_max_tokens = 4096
+
+        # Import tool parser (same one used by MLX backend)
+        try:
+            from mlx_omni_server.chat.mlx.tools.qwen3_moe_tools_parser import (
+                Qwen3MoeToolParser,
+            )
+
+            self.tool_parser = Qwen3MoeToolParser()
+        except ImportError:
+            logger.warning("Qwen3MoeToolParser not available, tool parsing disabled")
+            self.tool_parser = None
+
+    def _convert_system_to_messages(
+        self, system: Optional[SystemPrompt], messages: List[InputMessage]
+    ) -> List[Dict[str, Any]]:
+        """Convert Anthropic system prompt and messages to OpenAI format.
+
+        Args:
+            system: System prompt (string or list of text blocks)
+            messages: Input messages in Anthropic format
+
+        Returns:
+            List of messages in OpenAI format
+        """
+        openai_messages = []
+
+        # Tool use guidance (same as MLX adapter)
+        tool_guidance = """
+IMPORTANT TOOL USE GUIDELINES:
+1. ALWAYS use Read tool BEFORE Edit - never edit a file you haven't read
+2. Use Edit with SMALL, SURGICAL changes - only the exact lines that need to change
+3. NEVER output entire file contents in your response - use Write or Edit tools instead
+4. Break complex tasks into steps using TodoWrite
+5. One tool call at a time, verify each works before proceeding
+6. For Edit: old_string must match EXACTLY (including whitespace)
+"""
+
+        # Convert system prompt
+        if system:
+            system_content = ""
+            if isinstance(system, str):
+                system_content = system
+            else:
+                # List of SystemTextBlock
+                system_content = "\n".join(block.text for block in system)
+
+            # Prepend tool guidance
+            system_content = tool_guidance + "\n\n" + system_content
+            openai_messages.append({"role": "system", "content": system_content})
+
+        # Convert input messages
+        for msg in messages:
+            # Handle system messages in the messages array
+            if msg.role.value == "system":
+                if isinstance(msg.content, str):
+                    system_text = msg.content
+                else:
+                    system_text = "\n".join(
+                        block.text
+                        for block in msg.content
+                        if isinstance(block, RequestTextBlock)
+                    )
+                openai_messages.append({"role": "system", "content": system_text})
+                continue
+
+            openai_msg: Dict[str, Any] = {"role": msg.role.value}
+
+            # Handle content
+            if isinstance(msg.content, str):
+                openai_msg["content"] = msg.content
+            else:
+                # List of content blocks
+                content_parts = []
+                tool_calls = []
+
+                for block in msg.content:
+                    if isinstance(block, RequestTextBlock):
+                        content_parts.append(block.text)
+                    elif isinstance(block, RequestToolUseBlock):
+                        # Tool use from assistant
+                        tool_calls.append(
+                            {
+                                "id": block.id,
+                                "type": "function",
+                                "function": {
+                                    "name": block.name,
+                                    "arguments": json.dumps(block.input)
+                                    if isinstance(block.input, dict)
+                                    else block.input,
+                                },
+                            }
+                        )
+                    elif isinstance(block, RequestToolResultBlock):
+                        # Tool result from user
+                        tool_content = block.content
+                        if isinstance(tool_content, str):
+                            content_parts.append(tool_content)
+                        else:
+                            for sub_block in tool_content:
+                                if isinstance(sub_block, RequestTextBlock):
+                                    content_parts.append(sub_block.text)
+
+                        # For tool results, create a separate message
+                        openai_messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": block.tool_use_id,
+                                "content": "\n".join(content_parts) if content_parts else "",
+                            }
+                        )
+                        content_parts = []
+                        continue
+
+                if content_parts:
+                    openai_msg["content"] = "\n".join(content_parts)
+                else:
+                    openai_msg["content"] = ""
+
+                if tool_calls:
+                    openai_msg["tool_calls"] = tool_calls
+
+            openai_messages.append(openai_msg)
+
+        return openai_messages
+
+    def _convert_tools_to_openai(
+        self, tools: Optional[List[AnthropicTool]]
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Convert Anthropic tools to OpenAI format.
+
+        Args:
+            tools: List of Anthropic tools
+
+        Returns:
+            List of tools in OpenAI format
+        """
+        if not tools:
+            return None
+
+        openai_tools = []
+        for tool in tools:
+            openai_tool = {
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description or "",
+                    "parameters": {
+                        "type": tool.input_schema.type,
+                        "properties": tool.input_schema.properties or {},
+                        "required": tool.input_schema.required or [],
+                    },
+                },
+            }
+            openai_tools.append(openai_tool)
+
+        return openai_tools
+
+    def _parse_tool_calls(self, text: str) -> List[Dict[str, Any]]:
+        """Parse tool calls from response text.
+
+        Uses Qwen3 XML format parser (same as MLX backend).
+
+        Args:
+            text: Response text that may contain tool calls
+
+        Returns:
+            List of parsed tool calls
+        """
+        if not self.tool_parser:
+            return []
+
+        # Check for tool call markers
+        if "<function=" not in text and "<tool_call>" not in text:
+            return []
+
+        try:
+            tool_calls = self.tool_parser.parse_tools(text)
+            if tool_calls:
+                # Filter out tool calls with empty arguments
+                valid_calls = []
+                for tc in tool_calls:
+                    if tc.arguments and len(tc.arguments) > 0:
+                        valid_calls.append(tc)
+                    else:
+                        logger.warning(
+                            f"Filtered out tool call '{tc.name}' with empty arguments"
+                        )
+                return valid_calls
+        except Exception as e:
+            logger.warning(f"Failed to parse tool calls: {e}")
+
+        return []
+
+    def _clean_tool_xml(self, text: str) -> str:
+        """Remove tool call XML from display text.
+
+        Args:
+            text: Text that may contain tool call XML
+
+        Returns:
+            Text with tool call XML removed
+        """
+        # Remove <tool_call>...</tool_call> blocks
+        text = re.sub(r"<tool_call>.*?</tool_call>", "", text, flags=re.DOTALL)
+        # Remove malformed <function=...></tool_call> blocks
+        text = re.sub(r"<function=.*?</tool_call>", "", text, flags=re.DOTALL)
+        return text.strip()
+
+    def generate(self, request: MessagesRequest) -> MessagesResponse:
+        """Generate complete response (synchronous wrapper).
+
+        Args:
+            request: Anthropic Messages API request
+
+        Returns:
+            Anthropic Messages API response
+        """
+        import asyncio
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(self._generate_async(request))
+        finally:
+            loop.close()
+
+    async def _generate_async(self, request: MessagesRequest) -> MessagesResponse:
+        """Generate complete response (async implementation).
+
+        Args:
+            request: Anthropic Messages API request
+
+        Returns:
+            Anthropic Messages API response
+        """
+        # Convert to OpenAI format
+        messages = self._convert_system_to_messages(request.system, request.messages)
+        tools = self._convert_tools_to_openai(request.tools)
+
+        # Get sampler settings
+        try:
+            from extensions.global_settings import get_global_settings
+
+            settings = get_global_settings().settings
+            temperature = (
+                request.temperature
+                if request.temperature is not None
+                else settings.temperature
+            )
+            top_p = request.top_p if request.top_p is not None else settings.top_p
+        except ImportError:
+            temperature = request.temperature or 0.7
+            top_p = request.top_p or 0.9
+
+        # Call llama-server
+        result = await self.backend.generate(
+            messages=messages,
+            tools=tools,
+            max_tokens=request.max_tokens or self._default_max_tokens,
+            temperature=temperature,
+            top_p=top_p,
+        )
+
+        # Extract response
+        choice = result.get("choices", [{}])[0]
+        message = choice.get("message", {})
+        content_text = message.get("content", "")
+
+        # Parse tool calls from text or from response
+        tool_calls = []
+        openai_tool_calls = message.get("tool_calls", [])
+
+        if openai_tool_calls:
+            # llama-server returned structured tool calls
+            for tc in openai_tool_calls:
+                func = tc.get("function", {})
+                args = func.get("arguments", "{}")
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args)
+                    except json.JSONDecodeError:
+                        args = {}
+
+                tool_calls.append(
+                    ToolUseBlock(
+                        id=tc.get("id", f"toolu_{uuid.uuid4().hex[:24]}"),
+                        name=func.get("name", ""),
+                        input=args,
+                    )
+                )
+        elif content_text:
+            # Try parsing from text (Qwen XML format)
+            parsed = self._parse_tool_calls(content_text)
+            for tc in parsed:
+                tool_calls.append(
+                    ToolUseBlock(
+                        id=tc.id,
+                        name=tc.name,
+                        input=tc.arguments,
+                    )
+                )
+            # Clean XML from display text
+            if parsed:
+                content_text = self._clean_tool_xml(content_text)
+
+        # Build content blocks
+        content_blocks: List[ContentBlock] = []
+        if content_text:
+            content_blocks.append(TextBlock(text=content_text))
+        content_blocks.extend(tool_calls)
+
+        if not content_blocks:
+            content_blocks.append(TextBlock(text=""))
+
+        # Determine stop reason
+        finish_reason = choice.get("finish_reason", "stop")
+        if tool_calls:
+            stop_reason = StopReason.TOOL_USE
+        elif finish_reason == "length":
+            stop_reason = StopReason.MAX_TOKENS
+        else:
+            stop_reason = StopReason.END_TURN
+
+        # Build usage
+        usage_data = result.get("usage", {})
+        usage = Usage(
+            input_tokens=usage_data.get("prompt_tokens", 0),
+            output_tokens=usage_data.get("completion_tokens", 0),
+        )
+
+        return MessagesResponse(
+            id=f"msg_{uuid.uuid4().hex[:24]}",
+            content=content_blocks,
+            model=request.model,
+            stop_reason=stop_reason,
+            usage=usage,
+        )
+
+    def generate_stream(
+        self, request: MessagesRequest, temp_boost: float = 0.0
+    ) -> Generator[MessageStreamEvent, None, None]:
+        """Generate streaming response (synchronous wrapper).
+
+        Args:
+            request: Anthropic Messages API request
+            temp_boost: Additional temperature (for breaking repetition loops)
+
+        Yields:
+            Anthropic streaming events
+        """
+        import asyncio
+
+        # Run async generator in sync context
+        loop = asyncio.new_event_loop()
+        try:
+            async_gen = self._generate_stream_async(request, temp_boost)
+
+            while True:
+                try:
+                    event = loop.run_until_complete(async_gen.__anext__())
+                    yield event
+                except StopAsyncIteration:
+                    break
+        finally:
+            loop.close()
+
+    async def _generate_stream_async(
+        self, request: MessagesRequest, temp_boost: float = 0.0
+    ) -> AsyncGenerator[MessageStreamEvent, None]:
+        """Generate streaming response (async implementation).
+
+        Args:
+            request: Anthropic Messages API request
+            temp_boost: Additional temperature (for breaking repetition loops)
+
+        Yields:
+            Anthropic streaming events
+        """
+        message_id = f"msg_{uuid.uuid4().hex[:24]}"
+
+        # Convert to OpenAI format
+        messages = self._convert_system_to_messages(request.system, request.messages)
+        tools = self._convert_tools_to_openai(request.tools)
+
+        # Get sampler settings
+        try:
+            from extensions.global_settings import get_global_settings
+
+            settings = get_global_settings().settings
+            temperature = (
+                request.temperature
+                if request.temperature is not None
+                else settings.temperature
+            )
+            top_p = request.top_p if request.top_p is not None else settings.top_p
+        except ImportError:
+            temperature = request.temperature or 0.7
+            top_p = request.top_p or 0.9
+
+        # Apply temperature boost
+        if temp_boost > 0:
+            temperature = min(1.0, temperature + temp_boost)
+
+        # Emit message start
+        yield MessageStreamEvent(
+            type=StreamEventType.MESSAGE_START,
+            message=MessagesResponse(
+                id=message_id,
+                content=[],
+                model=request.model,
+                stop_reason=None,
+                usage=Usage(input_tokens=0, output_tokens=0),
+            ),
+        )
+
+        # Track state
+        accumulated_text = ""
+        current_block_index = 0
+        text_block_started = False
+        in_tool_call_xml = False
+        finish_reason = "stop"
+        prompt_tokens = 0
+        completion_tokens = 0
+
+        # Stream from llama-server
+        async for chunk in self.backend.generate_stream(
+            messages=messages,
+            tools=tools,
+            max_tokens=request.max_tokens or self._default_max_tokens,
+            temperature=temperature,
+            top_p=top_p,
+        ):
+            # Extract delta content
+            choices = chunk.get("choices", [])
+            if not choices:
+                continue
+
+            choice = choices[0]
+            delta = choice.get("delta", {})
+            content_delta = delta.get("content", "")
+            finish = choice.get("finish_reason")
+
+            if finish:
+                finish_reason = finish
+
+            # Track usage from final chunk
+            usage_data = chunk.get("usage", {})
+            if usage_data:
+                prompt_tokens = usage_data.get("prompt_tokens", prompt_tokens)
+                completion_tokens = usage_data.get("completion_tokens", completion_tokens)
+
+            if not content_delta:
+                continue
+
+            # Accumulate text
+            accumulated_text += content_delta
+
+            # Check for tool call XML
+            if "<function=" in accumulated_text or "<tool_call>" in accumulated_text:
+                in_tool_call_xml = True
+
+            # If we're in tool call mode, don't stream the XML
+            if in_tool_call_xml:
+                continue
+
+            # Start text block if needed
+            if not text_block_started:
+                yield MessageStreamEvent(
+                    type=StreamEventType.CONTENT_BLOCK_START,
+                    index=current_block_index,
+                    content_block=TextBlock(text=""),
+                )
+                text_block_started = True
+
+            # Stream text delta
+            yield MessageStreamEvent(
+                type=StreamEventType.CONTENT_BLOCK_DELTA,
+                index=current_block_index,
+                delta=StreamDelta(type="text_delta", text=content_delta),
+            )
+
+        # End text block if started
+        if text_block_started:
+            yield MessageStreamEvent(
+                type=StreamEventType.CONTENT_BLOCK_STOP,
+                index=current_block_index,
+            )
+            current_block_index += 1
+
+        # Parse tool calls from accumulated text
+        tool_calls = []
+        if accumulated_text:
+            parsed = self._parse_tool_calls(accumulated_text)
+            for tc in parsed:
+                tool_calls.append(tc)
+
+        # Emit tool use blocks
+        if tool_calls:
+            for tc in tool_calls:
+                # Start tool_use block
+                yield MessageStreamEvent(
+                    type=StreamEventType.CONTENT_BLOCK_START,
+                    index=current_block_index,
+                    content_block=ToolUseBlock(
+                        id=tc.id,
+                        name=tc.name,
+                        input={},
+                    ),
+                )
+
+                # Send input_json_delta
+                input_json = json.dumps(tc.arguments)
+                yield MessageStreamEvent(
+                    type=StreamEventType.CONTENT_BLOCK_DELTA,
+                    index=current_block_index,
+                    delta=StreamDelta(
+                        type="input_json_delta",
+                        partial_json=input_json,
+                    ),
+                )
+
+                # End tool_use block
+                yield MessageStreamEvent(
+                    type=StreamEventType.CONTENT_BLOCK_STOP,
+                    index=current_block_index,
+                )
+                current_block_index += 1
+
+        # Determine stop reason
+        has_tool_calls = len(tool_calls) > 0
+        if has_tool_calls:
+            stop_reason = StopReason.TOOL_USE
+        elif finish_reason == "length":
+            stop_reason = StopReason.MAX_TOKENS
+        else:
+            stop_reason = StopReason.END_TURN
+
+        # Emit message delta with stop reason and usage
+        yield MessageStreamEvent(
+            type=StreamEventType.MESSAGE_DELTA,
+            delta=StreamDelta(stop_reason=stop_reason),
+            usage=Usage(
+                input_tokens=prompt_tokens,
+                output_tokens=completion_tokens,
+            ),
+        )
+
+        # Emit message stop
+        yield MessageStreamEvent(type=StreamEventType.MESSAGE_STOP)

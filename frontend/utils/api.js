@@ -65,12 +65,6 @@ export const api = {
             });
         }
 
-        // Real-time stats tracking (like LM Studio)
-        let tokenCount = 0;
-        let startTime = null;
-        let lastStatsUpdate = 0;
-        const STATS_UPDATE_INTERVAL = 100; // Update stats every 100ms
-
         // Thinking mode detection - track state across chunks
         let inThinkingMode = false;
         let thinkingBuffer = '';
@@ -95,19 +89,10 @@ export const api = {
                         throw new Error(json.error.message || 'Generation error');
                     }
 
-                    // Handle content delta - count tokens for real-time tps
+                    // Handle content delta
                     const delta = json.choices?.[0]?.delta?.content;
                     if (delta) {
-                        // Start timing on first token
-                        if (!startTime) {
-                            startTime = performance.now();
-                        }
-
-                        // Count tokens (rough estimate: ~4 chars per token, or count chunks)
-                        tokenCount++;
-
                         // Detect thinking mode (<think>...</think> tags)
-                        // We just track state - content passes through with tags intact
                         thinkingBuffer += delta;
 
                         // Check for <think> opening tag
@@ -121,43 +106,26 @@ export const api = {
 
                         // Keep buffer size reasonable (only need to track tag state)
                         if (thinkingBuffer.length > 100) {
-                            // Keep last 20 chars for tag detection
                             thinkingBuffer = thinkingBuffer.slice(-20);
                         }
 
-                        // Send delta to onChunk - content includes <think> tags
+                        // Send delta to onChunk
                         if (onChunk) onChunk(delta);
 
                         // If onThinking callback provided, notify of thinking state
                         if (onThinking && inThinkingMode) {
                             onThinking(delta);
                         }
-
-                        // Update stats periodically for real-time tps display
-                        const now = performance.now();
-                        if (onStats && now - lastStatsUpdate > STATS_UPDATE_INTERVAL) {
-                            const elapsedSeconds = (now - startTime) / 1000;
-                            const realTimeTps = elapsedSeconds > 0 ? tokenCount / elapsedSeconds : 0;
-                            onStats({
-                                tokens: tokenCount,
-                                tps: realTimeTps,
-                                cache_hit: false,
-                                live: true,  // Mark as live stats (not final)
-                                isThinking: inThinkingMode // Include thinking state
-                            });
-                            lastStatsUpdate = now;
-                        }
                     }
 
-                    // Handle final usage stats from server (more accurate)
+                    // Handle final usage stats from server (real tok/s)
                     if (json.usage && onStats) {
                         onStats({
-                            tokens: json.usage.completion_tokens || tokenCount,
+                            tokens: json.usage.completion_tokens || 0,
                             tps: json.usage.tokens_per_second || json.usage.generation_tps || 0,
                             cache_hit: json.usage.prompt_tokens_details?.cached_tokens > 0 || false,
                             live: false  // Final stats from server
                         });
-                        // Usage chunk is the final chunk - we're done
                         return;
                     }
 
@@ -177,17 +145,6 @@ export const api = {
             }
         }
 
-        // If we finish without getting usage stats, send final calculated stats
-        if (onStats && tokenCount > 0 && startTime) {
-            const elapsedSeconds = (performance.now() - startTime) / 1000;
-            const calculatedTps = elapsedSeconds > 0 ? tokenCount / elapsedSeconds : 0;
-            onStats({
-                tokens: tokenCount,
-                tps: calculatedTps,
-                cache_hit: false,
-                live: false
-            });
-        }
     }
 };
 
@@ -253,7 +210,7 @@ export const endpoints = {
     network: async () => ({ addresses: [] }),
 
     // HuggingFace integration (MLX Studio extension)
-    hfSearch: (query, limit = 20) => api.get(`/api/models/search?q=${encodeURIComponent(query)}&limit=${limit}`),
+    hfSearch: (query, limit = 20, backend = 'all') => api.get(`/api/models/search?q=${encodeURIComponent(query)}&limit=${limit}&backend=${backend}`),
     hfDownload: (repoId) => api.post(`/api/models/download?repo_id=${encodeURIComponent(repoId)}`),
     hfDownloads: () => api.get('/api/models/downloads'),
     hfRepoInfo: (repoId) => api.get(`/api/models/info/${repoId}`),
@@ -301,7 +258,17 @@ export const endpoints = {
     updateRemote: (name, config) => api.post(`/api/remotes/${encodeURIComponent(name)}`, config),
     deleteRemote: (name) => api.delete(`/api/remotes/${encodeURIComponent(name)}`),
     remoteHealth: (name) => api.get(`/api/remotes/${encodeURIComponent(name)}/health`),
-    remoteModels: (name) => api.get(`/api/remotes/${encodeURIComponent(name)}/models`)
+    remoteModels: (name) => api.get(`/api/remotes/${encodeURIComponent(name)}/models`),
+
+    // =========================================================================
+    // GGUF Backend (llama-server integration)
+    // =========================================================================
+    ggufConfig: () => api.get('/api/gguf/config'),
+    updateGgufConfig: (config) => api.post('/api/gguf/config', config),
+    ggufStatus: () => api.get('/api/gguf/status'),
+    ggufStart: (modelPath, port) => api.post(`/api/gguf/start?model_path=${encodeURIComponent(modelPath)}${port ? `&port=${port}` : ''}`),
+    ggufStop: () => api.post('/api/gguf/stop'),
+    ggufHealth: () => api.get('/api/gguf/health')
 };
 
 /**

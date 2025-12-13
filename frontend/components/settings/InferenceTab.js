@@ -22,6 +22,7 @@ const HINTS = {
     topK: "Limits vocabulary to top K tokens. Lower = more focused, higher = more varied word choices.",
     repPenalty: "Penalizes repeated words/phrases. 1.0 = no penalty, 1.5 = strong penalty against repetition.",
     contextLength: "How much conversation history to include. Higher = better memory but more VRAM usage.",
+    thinkingBudget: "Maximum tokens for reasoning/thinking. 0 = unlimited. Lower values produce shorter reasoning.",
     systemPrompt: "Instructions that guide the model's behavior. Persists across the conversation."
 };
 
@@ -191,6 +192,17 @@ export function InferenceTab() {
                         step="1024"
                         displayValue=${formatContextSize(settings.contextLength)}
                         onChange=${v => updateSetting('contextLength', v)}
+                    />
+
+                    <${SliderSetting}
+                        label="Thinking Budget"
+                        hint=${HINTS.thinkingBudget}
+                        value=${settings.thinkingBudget || 0}
+                        min="0"
+                        max="16384"
+                        step="256"
+                        displayValue=${settings.thinkingBudget ? formatContextSize(settings.thinkingBudget) : 'Unlimited'}
+                        onChange=${v => updateSetting('thinkingBudget', v)}
                     />
 
                     <div class="setting-row">

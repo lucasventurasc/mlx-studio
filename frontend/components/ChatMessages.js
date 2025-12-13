@@ -85,6 +85,14 @@ export function ChatMessages() {
 function Message({ role, content, modelName, isLast, isGenerating }) {
     const time = formatTime(new Date());
     const [thinkingExpanded, setThinkingExpanded] = useState(false);
+    const thinkingContentRef = useRef(null);
+
+    // Auto-scroll thinking content to bottom while streaming
+    useEffect(() => {
+        if (thinkingContentRef.current && isGenerating) {
+            thinkingContentRef.current.scrollTop = thinkingContentRef.current.scrollHeight;
+        }
+    }, [content, isGenerating]);
 
     // Get display name based on role
     const getDisplayName = () => {
@@ -111,7 +119,6 @@ function Message({ role, content, modelName, isLast, isGenerating }) {
                         <span></span>
                         <span></span>
                     </div>
-                    <span class="generating-text">Processing prompt...</span>
                 </div>
             `;
         }
@@ -123,38 +130,36 @@ function Message({ role, content, modelName, isLast, isGenerating }) {
         // Parse completed thinking blocks and content
         const parts = parseThinkingContent(content);
 
-        // If still in thinking phase, show the live thinking
+        // If still in thinking phase, show inline thinking with response area below
         if (stillThinking && currentThinkingText !== null) {
             return html`
-                <div class="thinking-block active">
-                    <div class="thinking-header">
-                        <div class="thinking-indicator">
-                            <span class="thinking-pulse"></span>
-                            <span>Thinking...</span>
-                        </div>
+                <div class="thinking-inline active">
+                    <div class="thinking-inline-header">
+                        <span class="thinking-pulse"></span>
+                        <span>Reasoning</span>
                     </div>
-                    <div class="thinking-content">
+                    <div class="thinking-inline-content" ref=${thinkingContentRef}>
                         <pre>${currentThinkingText}</pre>
                     </div>
                 </div>
             `;
         }
 
-        // Render parsed parts
+        // Render parsed parts - thinking blocks stay visible but collapsed
         return parts.map((part, idx) => {
             if (part.type === 'thinking') {
                 return html`
-                    <div class="thinking-block completed" key=${idx}>
+                    <div class="thinking-inline completed" key=${idx}>
                         <button
-                            class="thinking-toggle ${thinkingExpanded ? 'expanded' : ''}"
+                            class="thinking-inline-toggle ${thinkingExpanded ? 'expanded' : ''}"
                             onClick=${() => setThinkingExpanded(!thinkingExpanded)}
                         >
-                            <${ChevronDownIcon} size=${14} />
-                            <span>Thought process</span>
-                            <span class="thinking-length">${part.text.length} chars</span>
+                            <${ChevronDownIcon} size=${12} />
+                            <span>Reasoning</span>
+                            <span class="thinking-inline-meta">${Math.ceil(part.text.length / 4)} tokens</span>
                         </button>
                         ${thinkingExpanded && html`
-                            <div class="thinking-content">
+                            <div class="thinking-inline-content expanded">
                                 <pre>${part.text}</pre>
                             </div>
                         `}

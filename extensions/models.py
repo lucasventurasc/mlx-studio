@@ -45,11 +45,11 @@ class ModelManager:
         return HF_CACHE_DIR
 
     def list_local_models(self) -> List[ModelInfo]:
-        """List all MLX models from LM Studio folder."""
+        """List all MLX and GGUF models from LM Studio folder."""
         models = []
         seen_ids = set()
 
-        # Scan LM Studio models only
+        # Scan LM Studio models
         if LMSTUDIO_MODELS_DIR.exists():
             for author_dir in LMSTUDIO_MODELS_DIR.iterdir():
                 if not author_dir.is_dir():
@@ -65,6 +65,14 @@ class ModelManager:
                     if model_id in seen_ids:
                         continue
 
+                    # Check for GGUF files first
+                    gguf_info = self._scan_gguf_dir(model_id, model_name, model_dir)
+                    if gguf_info:
+                        models.extend(gguf_info)
+                        seen_ids.add(model_id)
+                        continue
+
+                    # Check for MLX model
                     model_info = self._scan_model_dir(model_id, model_name, model_dir)
                     if model_info:
                         models.append(model_info)
@@ -73,6 +81,36 @@ class ModelManager:
         # Sort by name
         models.sort(key=lambda m: m.name.lower())
         return models
+
+    def _scan_gguf_dir(self, model_id: str, model_name: str, model_path: Path) -> Optional[List[ModelInfo]]:
+        """Scan a directory for GGUF files and return ModelInfo for each."""
+        gguf_files = list(model_path.glob("*.gguf"))
+        if not gguf_files:
+            return None
+
+        models = []
+        for gguf_file in gguf_files:
+            size_bytes = gguf_file.stat().st_size
+            file_name = gguf_file.stem
+
+            # Extract quantization from filename (Q4_K_M, Q5_K_S, etc.)
+            import re
+            quantization = None
+            gguf_match = re.search(r'[_-]([qQ]\d+[_]?[kK]?[_]?[sSmMlL]?)', file_name)
+            if gguf_match:
+                quantization = gguf_match.group(1).upper()
+
+            models.append(ModelInfo(
+                id=str(gguf_file),  # Full path as ID for GGUF
+                name=file_name,
+                size_bytes=size_bytes,
+                size_human=self._format_size(size_bytes),
+                path=str(gguf_file),
+                is_mlx=False,
+                quantization=quantization
+            ))
+
+        return models if models else None
 
     def _scan_model_dir(self, model_id: str, model_name: str, model_path: Path) -> Optional[ModelInfo]:
         """Scan a model directory and return ModelInfo if valid MLX model."""
@@ -184,47 +222,90 @@ class ModelManager:
             return self.downloads.get(repo_id, {"status": "not_found"})
         return dict(self.downloads)
 
-    def search_hf_models(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
-        """Search for MLX models on HuggingFace."""
+    def search_hf_models(self, query: str, limit: int = 20, backend: str = "all") -> List[Dict[str, Any]]:
+        """Search for MLX and GGUF models on HuggingFace.
+
+        Args:
+            query: Search query
+            limit: Max results to return
+            backend: Filter by backend - "mlx", "gguf", or "all" (default)
+        """
         try:
             from huggingface_hub import HfApi
 
             api = HfApi()
-
-            # Search for MLX models
-            models = api.list_models(
-                search=query,
-                library="mlx",
-                sort="downloads",
-                direction=-1,
-                limit=limit
-            )
-
             results = []
-            for model in models:
-                # Extract quantization from model name
-                quantization = None
-                model_name = model.id.split("/")[-1].lower()
-                for q in ["8bit", "6bit", "4bit", "3bit", "2bit", "fp16", "bf16"]:
-                    if q in model_name or q.replace("bit", "-bit") in model_name:
-                        quantization = q.upper()
-                        break
+            seen_ids = set()
 
-                results.append({
-                    "id": model.id,
-                    "name": model.id.split("/")[-1],
-                    "author": model.id.split("/")[0] if "/" in model.id else "unknown",
-                    "downloads": model.downloads or 0,
-                    "likes": model.likes or 0,
-                    "quantization": quantization,
-                    "tags": list(model.tags or [])[:5]
-                })
+            # Search MLX models
+            if backend in ("mlx", "all"):
+                mlx_models = api.list_models(
+                    search=query,
+                    library="mlx",
+                    sort="downloads",
+                    direction=-1,
+                    limit=limit
+                )
+                for model in mlx_models:
+                    if model.id in seen_ids:
+                        continue
+                    seen_ids.add(model.id)
+                    results.append(self._format_search_result(model, "mlx"))
 
-            return results
+            # Search GGUF models
+            if backend in ("gguf", "all"):
+                gguf_models = api.list_models(
+                    search=query,
+                    library="gguf",
+                    sort="downloads",
+                    direction=-1,
+                    limit=limit
+                )
+                for model in gguf_models:
+                    if model.id in seen_ids:
+                        continue
+                    seen_ids.add(model.id)
+                    results.append(self._format_search_result(model, "gguf"))
+
+            # Sort by downloads and limit
+            results.sort(key=lambda x: x["downloads"], reverse=True)
+            return results[:limit]
 
         except Exception as e:
             logger.error(f"HF search failed: {e}")
             return []
+
+    def _format_search_result(self, model, backend: str) -> Dict[str, Any]:
+        """Format a HuggingFace model into search result dict."""
+        model_name = model.id.split("/")[-1].lower()
+
+        # Extract quantization from model name
+        quantization = None
+        # MLX quantizations
+        for q in ["8bit", "6bit", "4bit", "3bit", "2bit", "fp16", "bf16"]:
+            if q in model_name or q.replace("bit", "-bit") in model_name:
+                quantization = q.upper()
+                break
+        # GGUF quantizations (Q4_K_M, Q5_K_S, etc.)
+        if not quantization:
+            import re
+            gguf_match = re.search(r'[qQ](\d+)[_]?([kK])?[_]?([sSmMlL])?', model_name)
+            if gguf_match:
+                q_level = gguf_match.group(1)
+                k_type = gguf_match.group(2) or ""
+                size = gguf_match.group(3) or ""
+                quantization = f"Q{q_level}{k_type.upper()}{size.upper()}".strip()
+
+        return {
+            "id": model.id,
+            "name": model.id.split("/")[-1],
+            "author": model.id.split("/")[0] if "/" in model.id else "unknown",
+            "downloads": model.downloads or 0,
+            "likes": model.likes or 0,
+            "quantization": quantization,
+            "tags": list(model.tags or [])[:5],
+            "backend": backend
+        }
 
     def get_model_info(self, repo_id: str) -> Optional[Dict[str, Any]]:
         """Get detailed info about a model from HuggingFace."""

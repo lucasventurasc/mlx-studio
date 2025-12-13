@@ -2,16 +2,19 @@
   "enabled": true,
   "tiers": {
     "haiku": {
-      "model": "/Users/lucasventura/.lmstudio/models/nightmedia/Qwen3-Coder-42B-A3B-Instruct-TOTAL-RECALL-MASTER-CODER-M-q6-hi-mlx",
-      "draft_model": ""
+      "model": "/Users/lucasventura/.lmstudio/models/mlx-community/Llama-3.2-3B-Instruct-4bit",
+      "draft_model": "",
+      "backend": "mlx"
     },
     "sonnet": {
-      "model": "/Users/lucasventura/.lmstudio/models/nightmedia/Qwen3-Coder-42B-A3B-Instruct-TOTAL-RECALL-MASTER-CODER-M-q6-hi-mlx",
-      "draft_model": ""
+      "model": "/Users/lucasventura/.lmstudio/models/lmstudio-community/Qwen2.5-7B-Instruct-MLX-8bit",
+      "draft_model": "",
+      "backend": "mlx"
     },
     "opus": {
-      "model": "/Users/lucasventura/.lmstudio/models/nightmedia/Qwen3-Coder-42B-A3B-Instruct-TOTAL-RECALL-MASTER-CODER-M-q6-hi-mlx",
-      "draft_model": ""
+      "model": "/Users/lucasventura/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-6bit",
+      "draft_model": "",
+      "backend": "mlx"
     }
   },
   "default_model": null
