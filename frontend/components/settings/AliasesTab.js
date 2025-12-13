@@ -213,11 +213,11 @@ export function AliasesTab() {
                 <h3 class="settings-card-title">Usage Examples</h3>
                 <div class="usage-examples">
                     <div class="usage-example">
-                        <code>curl localhost:1234/v1/chat/completions -d '{"model": "qwen", ...}'</code>
+                        <code>curl ${window.location.host}/v1/chat/completions -d '{"model": "qwen", ...}'</code>
                         <span class="usage-desc">Use alias in API requests</span>
                     </div>
                     <div class="usage-example">
-                        <code>ANTHROPIC_BASE_URL=http://localhost:1234/anthropic claude</code>
+                        <code>ANTHROPIC_BASE_URL=${window.location.origin}/anthropic claude</code>
                         <span class="usage-desc">Claude Code will use routing + aliases</span>
                     </div>
                 </div>

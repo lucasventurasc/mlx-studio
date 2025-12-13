@@ -1,27 +1,18 @@
 {
   "enabled": true,
-  "description": "Maps Claude Code model tiers to local/network models",
   "tiers": {
     "haiku": {
-      "description": "Fast model for exploration, glob, grep, quick tasks",
-      "model": "/Users/lucasventura/.lmstudio/models/lmstudio-community/Qwen2.5-3B-Instruct-MLX-4bit",
+      "model": "/Users/lucasventura/.lmstudio/models/nightmedia/Qwen3-Coder-42B-A3B-Instruct-TOTAL-RECALL-MASTER-CODER-M-q6-hi-mlx",
       "draft_model": ""
     },
     "sonnet": {
-      "description": "Balanced model for reasoning, planning, medium tasks",
-      "model": "/Users/lucasventura/.lmstudio/models/lmstudio-community/Qwen2.5-3B-Instruct-MLX-4bit",
+      "model": "/Users/lucasventura/.lmstudio/models/nightmedia/Qwen3-Coder-42B-A3B-Instruct-TOTAL-RECALL-MASTER-CODER-M-q6-hi-mlx",
       "draft_model": ""
     },
     "opus": {
-      "description": "Full model for implementation, complex reasoning",
-      "model": "/Users/lucasventura/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit",
+      "model": "/Users/lucasventura/.lmstudio/models/nightmedia/Qwen3-Coder-42B-A3B-Instruct-TOTAL-RECALL-MASTER-CODER-M-q6-hi-mlx",
       "draft_model": ""
     }
   },
-  "default_model": null,
-  "patterns": {
-    "claude-.*haiku.*": "haiku",
-    "claude-.*sonnet.*": "sonnet",
-    "claude-.*opus.*": "opus"
-  }
+  "default_model": null
 }

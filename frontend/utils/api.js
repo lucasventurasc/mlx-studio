@@ -1,7 +1,8 @@
 // API utility functions for MLX Studio v2.0
 // Backend: mlx-omni-server + custom extensions
 
-const API_BASE = 'http://localhost:1234';
+// Use current host for API calls (supports network access)
+const API_BASE = `${window.location.protocol}//${window.location.host}`;
 
 export const api = {
     base: API_BASE,
@@ -34,11 +35,12 @@ export const api = {
      * Stream API with stats callback (OpenAI format)
      * @param {string} endpoint - API endpoint
      * @param {object} data - Request body
-     * @param {function} onChunk - Called with each text chunk
+     * @param {function} onChunk - Called with each text chunk (content delta)
      * @param {function} onStats - Called with stats updates
      * @param {AbortSignal} signal - Optional AbortSignal for cancellation
+     * @param {function} onThinking - Called with thinking/reasoning delta (optional)
      */
-    async stream(endpoint, data, onChunk, onStats, signal) {
+    async stream(endpoint, data, onChunk, onStats, signal, onThinking) {
         const response = await fetch(`${API_BASE}${endpoint}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -46,7 +48,11 @@ export const api = {
             signal
         });
 
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Stream API Error:', response.status, errorText);
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -64,6 +70,10 @@ export const api = {
         let startTime = null;
         let lastStatsUpdate = 0;
         const STATS_UPDATE_INTERVAL = 100; // Update stats every 100ms
+
+        // Thinking mode detection - track state across chunks
+        let inThinkingMode = false;
+        let thinkingBuffer = '';
 
         while (true) {
             const { done, value } = await reader.read();
@@ -88,8 +98,6 @@ export const api = {
                     // Handle content delta - count tokens for real-time tps
                     const delta = json.choices?.[0]?.delta?.content;
                     if (delta) {
-                        if (onChunk) onChunk(delta);
-
                         // Start timing on first token
                         if (!startTime) {
                             startTime = performance.now();
@@ -97,6 +105,33 @@ export const api = {
 
                         // Count tokens (rough estimate: ~4 chars per token, or count chunks)
                         tokenCount++;
+
+                        // Detect thinking mode (<think>...</think> tags)
+                        // We just track state - content passes through with tags intact
+                        thinkingBuffer += delta;
+
+                        // Check for <think> opening tag
+                        if (thinkingBuffer.includes('<think>') && !thinkingBuffer.includes('</think>')) {
+                            inThinkingMode = true;
+                        }
+                        // Check for </think> closing tag
+                        if (thinkingBuffer.includes('</think>')) {
+                            inThinkingMode = false;
+                        }
+
+                        // Keep buffer size reasonable (only need to track tag state)
+                        if (thinkingBuffer.length > 100) {
+                            // Keep last 20 chars for tag detection
+                            thinkingBuffer = thinkingBuffer.slice(-20);
+                        }
+
+                        // Send delta to onChunk - content includes <think> tags
+                        if (onChunk) onChunk(delta);
+
+                        // If onThinking callback provided, notify of thinking state
+                        if (onThinking && inThinkingMode) {
+                            onThinking(delta);
+                        }
 
                         // Update stats periodically for real-time tps display
                         const now = performance.now();
@@ -107,7 +142,8 @@ export const api = {
                                 tokens: tokenCount,
                                 tps: realTimeTps,
                                 cache_hit: false,
-                                live: true  // Mark as live stats (not final)
+                                live: true,  // Mark as live stats (not final)
+                                isThinking: inThinkingMode // Include thinking state
                             });
                             lastStatsUpdate = now;
                         }
@@ -166,7 +202,7 @@ export const endpoints = {
 
     // Chat completions (mlx-omni-server)
     chat: (data) => api.post('/v1/chat/completions', data),
-    chatStream: (data, onChunk, onStats, signal) => api.stream('/v1/chat/completions', data, onChunk, onStats, signal),
+    chatStream: (data, onChunk, onStats, signal, onThinking) => api.stream('/v1/chat/completions', data, onChunk, onStats, signal, onThinking),
 
     // Health check
     health: () => api.get('/health'),

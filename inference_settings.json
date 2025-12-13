@@ -1,0 +1,6 @@
+{
+  "temperature": 0.5,
+  "top_p": 0.3,
+  "top_k": 20,
+  "max_tokens": 4096
+}

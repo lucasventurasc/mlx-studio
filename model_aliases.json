@@ -2,12 +2,6 @@
   "Qwen3-Coder-30B": "/Users/lucasventura/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-8bit",
   "qwen": "/Users/lucasventura/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-8bit",
   "qwen3-coder-30b": "/Users/lucasventura/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-8bit",
-  "claude-sonnet-4-5-20250929": "/Users/lucasventura/.lmstudio/models/lmstudio-community/Qwen2.5-3B-Instruct-MLX-4bit",
-  "claude-sonnet-4-20250514": "/Users/lucasventura/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-8bit",
-  "claude-opus-4-20250514": "/Users/lucasventura/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-8bit",
-  "claude-haiku-3-5-20241022": "/Users/lucasventura/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-8bit",
-  "claude-3-5-sonnet-20241022": "/Users/lucasventura/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-8bit",
-  "claude-3-5-haiku-20241022": "/Users/lucasventura/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-8bit",
-  "claude-3-opus-20240229": "/Users/lucasventura/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-8bit",
-  "claude-haiku-4-5-20251001": "/Users/lucasventura/.lmstudio/models/lmstudio-community/Qwen2.5-3B-Instruct-MLX-4bit"
+  "claude-sonnet-4-5-20250929": "/Users/lucasventura/.lmstudio/models/nightmedia/Qwen3-Coder-42B-A3B-Instruct-TOTAL-RECALL-MASTER-CODER-M-q6-hi-mlx",
+  "claude-haiku-4-5-20251001": "/Users/lucasventura/.lmstudio/models/nightmedia/Qwen3-Coder-42B-A3B-Instruct-TOTAL-RECALL-MASTER-CODER-M-q6-hi-mlx"
 }

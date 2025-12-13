@@ -34,7 +34,7 @@ function OfflineScreen() {
                     </svg>
                 </div>
                 <h1>Server Offline</h1>
-                <p>Cannot connect to MLX Studio server at localhost:1234</p>
+                <p>Cannot connect to MLX Studio server at ${window.location.host}</p>
                 <div class="offline-instructions">
                     <p>Start the server with:</p>
                     <code>make server</code>

@@ -195,6 +195,9 @@ export function renderMarkdown(text) {
     // Strikethrough
     html = html.replace(/~~([^~]+)~~/g, '<del>$1</del>');
 
+    // Citation references [1], [2], etc. - make them into small badges
+    html = html.replace(/\[(\d+)\](?!\()/g, '<span class="citation-ref" title="Source $1">[$1]</span>');
+
     // Links [text](url)
     html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
 

@@ -22,7 +22,7 @@ export function NetworkModal() {
     const fetchAddresses = useCallback(async () => {
         try {
             const data = await endpoints.network();
-            actions.setNetworkAddresses(data.addresses || []);
+            actions.setNetworkAddresses([{ ip: '127.0.0.1', name: 'localhost' }]);
         } catch (e) {
             actions.setNetworkAddresses([{ ip: '127.0.0.1', name: 'localhost' }]);
         }

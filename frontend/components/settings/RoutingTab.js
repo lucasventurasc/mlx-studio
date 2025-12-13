@@ -231,7 +231,7 @@ export function RoutingTab() {
                                         <select
                                             class="tier-select"
                                             value=${config.tiers[tier]?.remote || 'local'}
-                                            onChange=${e => {
+                                            onChange=${async e => {
                                                 const value = e.target.value;
                                                 if (value === 'local') {
                                                     handleTierChange(tier, 'remote', null);
@@ -239,6 +239,16 @@ export function RoutingTab() {
                                                     handleTierChange(tier, 'remote', value);
                                                     // Clear local model when switching to remote
                                                     handleTierChange(tier, 'model', null);
+                                                    // Fetch remote models if not already loaded
+                                                    if (!remoteModels[value]) {
+                                                        try {
+                                                            const modelsRes = await endpoints.remoteModels(value);
+                                                            setRemoteModels(prev => ({ ...prev, [value]: modelsRes.models || [] }));
+                                                        } catch (e) {
+                                                            console.error('Failed to load remote models:', e);
+                                                            showToast(`Failed to load models from ${value}`);
+                                                        }
+                                                    }
                                                 }
                                             }}
                                         >

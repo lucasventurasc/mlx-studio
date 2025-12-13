@@ -1,7 +1,8 @@
 // Audio API functions for Voice Mode
 // STT (Speech-to-Text) and TTS (Text-to-Speech) via mlx-omni-server
 
-const API_BASE = 'http://localhost:1234';
+// Use current host for API calls (supports network access)
+const API_BASE = `${window.location.protocol}//${window.location.host}`;
 
 /**
  * Transcribe audio to text using Whisper (STT)
@@ -99,7 +100,7 @@ export async function synthesizeSpeech(text, options = {}) {
         return blob;
     }
 
-    // Default: use mlx-omni-server TTS (Kokoro, F5-TTS, Dia)
+    // Default: use mlx-omni-server TTS (Kokoro, Marvis)
     const requestBody = {
         model,
         input: text,
@@ -158,14 +159,12 @@ export const TTS_VOICES = {
 
 /**
  * Default TTS models
- * Note: Marvis/Dia have GPU conflicts with LLM in Voice Mode - use Kokoro or Edge TTS instead
+ * Note: Marvis has GPU conflicts with LLM in Voice Mode - use Kokoro or Edge TTS instead
  */
 export const TTS_MODELS = {
     'mlx-community/Kokoro-82M-4bit': 'Kokoro 82M (Local, PT-BR) - Recommended',
     'edge-tts': 'Edge TTS (Online, High Quality)',
-    'Marvis-AI/marvis-tts-250m-v0.1': 'Marvis 250M (English only, unstable in Voice Mode)',
-    'lucasnewman/f5-tts-mlx': 'F5-TTS (Voice Clone)',
-    'mlx-community/Dia-1.6B-4bit': 'Dia 1.6B (English, unstable in Voice Mode)'
+    'Marvis-AI/marvis-tts-250m-v0.1': 'Marvis 250M (English only, unstable in Voice Mode)'
 };
 
 /**
@@ -174,14 +173,6 @@ export const TTS_MODELS = {
 export const MARVIS_VOICES = {
     'conversational_a': 'Conversational A (Female)',
     'conversational_b': 'Conversational B (Male)'
-};
-
-/**
- * Dia TTS voices
- */
-export const DIA_VOICES = {
-    'S1': 'Speaker 1 (Primary)',
-    'S2': 'Speaker 2 (Secondary)'
 };
 
 /**
