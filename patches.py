@@ -267,10 +267,33 @@ def get_tier_for_model(model_id: str) -> str:
     return "sonnet"  # Default
 
 
+# Models that use RotatingKVCache and don't support kv_bits quantization
+ROTATING_KV_CACHE_MODELS = [
+    "gpt-oss",
+    "openai-gpt-oss",
+]
+
+
+def model_supports_kv_quantization(model_id: str) -> bool:
+    """Check if a model supports KV cache quantization.
+
+    Some models use RotatingKVCache which doesn't support quantization yet.
+    """
+    model_lower = model_id.lower()
+    for pattern in ROTATING_KV_CACHE_MODELS:
+        if pattern in model_lower:
+            return False
+    return True
+
+
 def apply_patches():
     """Apply all necessary patches to mlx-omni-server."""
     _patch_mlx_lm_utils()
     _patch_chat_generator()
+    _patch_kv_bits_for_rotating_cache()
+    # GPT-OSS channel format support (isolated in separate module)
+    from extensions.gpt_oss_adapter import patch_openai_adapter as patch_gpt_oss
+    patch_gpt_oss()
     # _patch_chat_template_tools()  # Disabled - mlx-omni-server has native Qwen3 tool support
 
 
@@ -400,3 +423,32 @@ def _patch_chat_template_tools():
 
     ChatTemplate.parse_chat_response = patched_parse
     print("[patches] Enabled Qwen3 tool call parsing")
+
+
+def _patch_kv_bits_for_rotating_cache():
+    """
+    Patch ChatGenerator._create_mlx_kwargs to disable kv_bits for models
+    that use RotatingKVCache (like gpt-oss), which doesn't support quantization.
+    """
+    from mlx_omni_server.chat.mlx.chat_generator import ChatGenerator
+
+    original_create_mlx_kwargs = ChatGenerator._create_mlx_kwargs
+
+    def patched_create_mlx_kwargs(self, sampler=None, max_tokens=4096, **kwargs):
+        """Wrapper that disables kv_bits for models with RotatingKVCache."""
+        result = original_create_mlx_kwargs(self, sampler=sampler, max_tokens=max_tokens, **kwargs)
+
+        # Check if model supports KV cache quantization
+        model_id = getattr(self.model, 'model_id', '') or ''
+        if not model_supports_kv_quantization(model_id):
+            if 'kv_bits' in result:
+                print(f"[patches] Disabling kv_bits for model '{model_id}' (uses RotatingKVCache)")
+                del result['kv_bits']
+
+        return result
+
+    ChatGenerator._create_mlx_kwargs = patched_create_mlx_kwargs
+    print("[patches] Added RotatingKVCache compatibility for kv_bits")
+
+
+    # GPT-OSS channel format code moved to extensions/gpt_oss_adapter.py

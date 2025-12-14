@@ -1,5 +1,17 @@
 {
+  "qwen/qwen3-coder-30b": "~/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-6bit",
+  "qwen/qwen2.5-coder-14b": "~/.lmstudio/models/lmstudio-community/Qwen2.5-Coder-14B-Instruct-MLX-4bit",
   "qwen3-coder-30b": "~/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-6bit",
   "qwen2.5-coder-14b": "~/.lmstudio/models/lmstudio-community/Qwen2.5-Coder-14B-Instruct-MLX-4bit",
-  "qwen3-4b": "~/.lmstudio/models/lmstudio-community/Qwen3-4b-Instruct-2507-MLX-8bit"
+  "qwen2.5-coder-7b": "~/.lmstudio/models/lmstudio-community/Qwen2.5-7B-Instruct-MLX-8bit",
+  "qwen2.5-coder-3b": "~/.lmstudio/models/lmstudio-community/Qwen2.5-3B-Instruct-MLX-8bit",
+  "qwen2.5-coder-1.5b": "~/.lmstudio/models/lmstudio-community/Qwen2.5-Coder-1.5B-Instruct-MLX-8bit",
+  "qwen3-14b": "~/.lmstudio/models/lmstudio-community/Qwen3-14B-MLX-4bit",
+  "qwen3-4b": "~/.lmstudio/models/lmstudio-community/Qwen3-4b-Instruct-2507-MLX-8bit",
+  "qwen3-1.7b": "~/.lmstudio/models/mlx-community/Qwen3-1.7B-4bit",
+  "qwen3-0.6b": "~/.lmstudio/models/mlx-community/Qwen3-0.6B-4bit",
+  "llama-3b": "~/.lmstudio/models/mlx-community/Llama-3.2-3B-Instruct-4bit",
+  "deepseek-r1-8b": "~/.lmstudio/models/lmstudio-community/DeepSeek-R1-0528-Qwen3-8B-MLX-4bit",
+  "gpt-oss-20b": "~/.lmstudio/models/mlx-community/gpt-oss-20b-MXFP4-Q8",
+  "devstral-24b": "~/.lmstudio/models/mlx-community/Devstral-Small-2-24B-Instruct-2512-4bit"
 }

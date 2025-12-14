@@ -6,11 +6,77 @@ Since llama-server already provides OpenAI-compatible API, this is essentially a
 """
 
 import logging
+import re
 from typing import Any, Dict, Generator, List, Optional
 
 from .gguf_backend import GGUFBackend
 
 logger = logging.getLogger("mlx-studio.gguf")
+
+
+# GPT-OSS channel format parser
+# Format variations:
+#   <|channel|>analysis<|message|>...<|end|>
+#   <|start|>assistant<|channel|>final<|message|>...<|end|>
+#   <|channel|>commentary to=functions.view<|constrain|>json<|message|>...<|call|>
+GPT_OSS_PATTERNS = {
+    # Match <|channel|>name<|message|>content until next marker or end
+    'channel': re.compile(
+        r'<\|channel\|>([^<|]+)<\|message\|>(.*?)(?=<\|(?:end|start|channel|call)\|>|$)',
+        re.DOTALL
+    ),
+    # Match special tokens to strip
+    'special_tokens': re.compile(
+        r'<\|(?:start|end|call|constrain)\|>(?:[^<]*)?',
+        re.DOTALL
+    ),
+    # Detect GPT-OSS format
+    'detect': re.compile(r'<\|(?:channel|start)\|>')
+}
+
+
+def extract_final_channel(text: str) -> str:
+    """Extract the 'final' channel content from GPT-OSS format.
+
+    If text contains channel markers, returns only the 'final' channel content.
+    If no 'final' channel, strips all special tokens and returns clean text.
+    Otherwise returns the original text unchanged.
+    """
+    # Quick check - if no channel markers, return as-is
+    if not GPT_OSS_PATTERNS['detect'].search(text):
+        return text
+
+    # Find all channels
+    matches = GPT_OSS_PATTERNS['channel'].findall(text)
+
+    channels = {}
+    for channel_name, content in matches:
+        # Clean channel name (remove stuff like "commentary to=functions.view")
+        clean_name = channel_name.split()[0].strip()
+        # Skip internal channels like commentary, analysis
+        if clean_name in ('commentary', 'analysis'):
+            continue
+        if clean_name not in channels:  # Keep first occurrence
+            channels[clean_name] = content.strip()
+
+    # Prefer 'final' channel
+    if 'final' in channels:
+        result = channels['final']
+        # Clean any remaining special tokens
+        result = GPT_OSS_PATTERNS['special_tokens'].sub('', result)
+        return result.strip()
+
+    # No final channel found - this might be a malformed response
+    # Try to extract any meaningful content by removing all special tokens
+    cleaned = GPT_OSS_PATTERNS['special_tokens'].sub('', text)
+    cleaned = GPT_OSS_PATTERNS['channel'].sub(r'\2', cleaned)  # Keep just content
+    cleaned = re.sub(r'<\|[^|]+\|>', '', cleaned)  # Remove any remaining tokens
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()  # Normalize whitespace
+
+    if cleaned:
+        return cleaned
+
+    return text
 
 # Import OpenAI schema types
 import sys
@@ -233,6 +299,9 @@ class GGUFOpenAIAdapter:
         accumulated_reasoning = ""
         has_tool_calls = False
         finish_reason = None
+        last_chunk = None
+        uses_channel_format = False
+        channel_format_checked = False
 
         async for chunk in self.backend.generate_stream(
             messages=messages,
@@ -242,6 +311,7 @@ class GGUFOpenAIAdapter:
             top_p=request.top_p or 0.9,
         ):
             chunk_count += 1
+            last_chunk = chunk
 
             # Track what we're receiving for debugging
             choices = chunk.get("choices", [])
@@ -249,6 +319,12 @@ class GGUFOpenAIAdapter:
                 delta = choices[0].get("delta", {})
                 if delta.get("content"):
                     accumulated_content += delta["content"]
+                    # Check if model uses GPT-OSS channel format (check early in stream)
+                    if not channel_format_checked and len(accumulated_content) > 20:
+                        uses_channel_format = '<|channel|>' in accumulated_content or '<|start|>' in accumulated_content
+                        channel_format_checked = True
+                        if uses_channel_format:
+                            logger.info("Detected GPT-OSS channel format, buffering response")
                 if delta.get("reasoning_content"):
                     accumulated_reasoning += delta["reasoning_content"]
                 if delta.get("tool_calls"):
@@ -256,16 +332,58 @@ class GGUFOpenAIAdapter:
                 if choices[0].get("finish_reason"):
                     finish_reason = choices[0]["finish_reason"]
 
+            # If using channel format, buffer everything and process at end
+            if uses_channel_format:
+                continue
+
             # Normalize chunk before validation
-            # llama-server may send reasoning_content without role in delta
             chunk = self._normalize_chunk(chunk)
-            # Parse chunk into our schema
             yield ChatCompletionChunk.model_validate(chunk)
 
+        # If we buffered due to channel format, process and yield final content
+        if uses_channel_format and accumulated_content:
+            final_content = extract_final_channel(accumulated_content)
+            logger.info(f"GPT-OSS channel extraction: {len(accumulated_content)} chars -> {len(final_content)} chars (final channel)")
+
+            # Create a single chunk with the final content
+            if last_chunk and final_content:
+                # Build final chunk with extracted content
+                final_chunk = {
+                    "id": last_chunk.get("id", "chatcmpl-gguf"),
+                    "object": "chat.completion.chunk",
+                    "created": last_chunk.get("created", 0),
+                    "model": last_chunk.get("model", "gguf"),
+                    "choices": [{
+                        "index": 0,
+                        "delta": {
+                            "role": "assistant",
+                            "content": final_content
+                        },
+                        "finish_reason": None
+                    }]
+                }
+                yield ChatCompletionChunk.model_validate(final_chunk)
+
+                # Send finish chunk
+                finish_chunk = {
+                    "id": last_chunk.get("id", "chatcmpl-gguf"),
+                    "object": "chat.completion.chunk",
+                    "created": last_chunk.get("created", 0),
+                    "model": last_chunk.get("model", "gguf"),
+                    "choices": [{
+                        "index": 0,
+                        "delta": {},
+                        "finish_reason": finish_reason or "stop"
+                    }],
+                    "usage": last_chunk.get("usage", {})
+                }
+                finish_chunk = self._normalize_chunk(finish_chunk)
+                yield ChatCompletionChunk.model_validate(finish_chunk)
+
         # Log what we received
-        logger.info(f"GGUF OpenAI stream completed: {chunk_count} chunks, content={len(accumulated_content)} chars, reasoning={len(accumulated_reasoning)} chars, has_tool_calls={has_tool_calls}, finish_reason={finish_reason}")
+        logger.info(f"GGUF OpenAI stream completed: {chunk_count} chunks, content={len(accumulated_content)} chars, reasoning={len(accumulated_reasoning)} chars, has_tool_calls={has_tool_calls}, finish_reason={finish_reason}, channel_format={uses_channel_format}")
         if not accumulated_content and not has_tool_calls:
             logger.warning("GGUF OpenAI stream produced no content and no tool calls - potential empty response")
-        if accumulated_content:
+        if accumulated_content and not uses_channel_format:
             preview = accumulated_content[:150].replace('\n', '\\n')
             logger.debug(f"GGUF OpenAI content preview: '{preview}...'")
