@@ -10,12 +10,14 @@ Combines mlx-omni-server backend with MLX Studio extensions:
 
 Usage:
     ./venv-omni/bin/python server.py --port 1234
+    ./venv-omni/bin/python server.py --port 8080 --model-cache-size 1
 
 Environment Variables (Cache Configuration):
     MLX_CACHE_BLOCK_SIZE   - Token block size for hashing (default: 256)
     MLX_CACHE_MAX_SLOTS    - Maximum cache slots (default: 4)
     MLX_CACHE_MIN_REUSE    - Minimum tokens to reuse cache (default: 512)
     MLX_CACHE_MAX_TOKENS   - Maximum tokens per slot (default: 65536)
+    MLX_MODEL_CACHE_SIZE   - Max models in memory (default: 1)
 """
 
 import os
@@ -24,6 +26,22 @@ import argparse
 import logging
 import threading
 from pathlib import Path
+
+# =============================================================================
+# Parse args FIRST (before setting env vars)
+# =============================================================================
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="MLX Studio Server")
+    parser.add_argument("--port", type=int, default=8080, help="Server port")
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="Server host")
+    parser.add_argument("--model-cache-size", type=int, default=None,
+                        help="Max models in memory (default: 1, use env MLX_MODEL_CACHE_SIZE)")
+    parser.add_argument("--kv-bits", type=int, default=None,
+                        help="KV cache quantization bits (default: None, use env MLX_KV_BITS)")
+    return parser.parse_args()
+
+_args = parse_args()
 
 # Global lock for MLX GPU operations - prevents Metal command buffer conflicts
 _mlx_lock = threading.Lock()
@@ -36,14 +54,21 @@ CACHE_DEFAULTS = {
     "MLX_CACHE_BLOCK_SIZE": "256",
     "MLX_CACHE_MAX_SLOTS": "4",
     "MLX_CACHE_MIN_REUSE": "512",
-    "MLX_CACHE_MAX_TOKENS": "131072",  # 128K context
-    "MLX_MODEL_CACHE_SIZE": "3",
+    "MLX_CACHE_MAX_TOKENS": "65536",
+    "MLX_MODEL_CACHE_SIZE": "1",  # Default: 1 model in memory
     "MLX_MODEL_CACHE_TTL": "0",
 }
 
+# Apply defaults, then override with command line args
 for key, default in CACHE_DEFAULTS.items():
     if key not in os.environ:
         os.environ[key] = default
+
+# Command line args override env vars
+if _args.model_cache_size is not None:
+    os.environ["MLX_MODEL_CACHE_SIZE"] = str(_args.model_cache_size)
+if _args.kv_bits is not None:
+    os.environ["MLX_KV_BITS"] = str(_args.kv_bits)
 
 # Add vendor mlx-omni-server to path
 VENDOR_PATH = Path(__file__).parent / "vendor" / "mlx-omni-server" / "src"
@@ -187,30 +212,27 @@ def get_network_ip():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="MLX Studio Server")
-    parser.add_argument("--port", type=int, default=1234, help="Server port")
-    parser.add_argument("--host", type=str, default="0.0.0.0", help="Server host")
-    args = parser.parse_args()
-
     lan_ip = get_network_ip()
+    model_cache_size = os.environ.get("MLX_MODEL_CACHE_SIZE", "1")
+    kv_bits = os.environ.get("MLX_KV_BITS", "off")
 
     print(f"""
 ╔═══════════════════════════════════════════════════════════╗
 ║              ⚡ MLX Studio v2.0                            ║
 ║     Powered by mlx-omni-server + custom extensions        ║
 ╠═══════════════════════════════════════════════════════════╣
-║  Local: http://localhost:{args.port:<5}                         ║""")
+║  Local: http://localhost:{_args.port:<5}                         ║""")
 
     if lan_ip:
-        print(f"║  LAN:   http://{lan_ip}:{args.port:<5}                      ║")
+        print(f"║  LAN:   http://{lan_ip}:{_args.port:<5}                      ║")
 
     print(f"""║  API:   /v1/chat/completions (OpenAI)                   ║
 ║  API:   /anthropic/v1/messages (Anthropic)              ║
-║  Cache: Multi-slot KV caching with persistence          ║
+║  Models in memory: {model_cache_size:<3} | KV bits: {kv_bits:<4}                  ║
 ╚═══════════════════════════════════════════════════════════╝
 """)
 
-    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    uvicorn.run(app, host=_args.host, port=_args.port, log_level="info")
 
 
 if __name__ == "__main__":

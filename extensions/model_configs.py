@@ -17,7 +17,7 @@ CONFIG_FILE = Path(__file__).parent.parent / "model_configs.json"
 
 # Default configuration for new models
 DEFAULT_MODEL_CONFIG = {
-    "context_length": 65536,
+    "context_length": 120000,  # Qwen3-Coder-30B supports 128K
     "max_tokens": 8192,
     "temperature": None,  # None = use global setting
     "top_p": None,
@@ -25,7 +25,7 @@ DEFAULT_MODEL_CONFIG = {
 
 # Global defaults (fallback when model has no config)
 GLOBAL_DEFAULTS = {
-    "context_length": 65536,
+    "context_length": 120000,  # Qwen3-Coder-30B supports 128K
     "max_tokens": 8192,
 }
 

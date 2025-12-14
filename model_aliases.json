@@ -1,6 +1,5 @@
 {
-  "Qwen3-Coder-30B": "/Users/lucasventura/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-8bit",
-  "qwen3-coder-30b": "/Users/lucasventura/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-8bit",
-  "openai/gpt-oss-20b": "/Users/lucasventura/.lmstudio/models/unsloth/gpt-oss-20b-GGUF/gpt-oss-20b-Q4_K_M.gguf",
-  "qwen": "/Users/lucasventura/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-8bit"
+  "qwen3-coder-30b": "~/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-6bit",
+  "qwen2.5-coder-14b": "~/.lmstudio/models/lmstudio-community/Qwen2.5-Coder-14B-Instruct-MLX-4bit",
+  "qwen3-4b": "~/.lmstudio/models/lmstudio-community/Qwen3-4b-Instruct-2507-MLX-8bit"
 }

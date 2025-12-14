@@ -123,6 +123,24 @@ EDGE_TTS_VOICES = {
 
 
 @router.get("/api/tts/edge/voices")
+
+@router.get("/api/network")
+
+def get_network():
+    """Return network addresses for frontend."""
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        ip = None
+    if ip:
+        return {"addresses": [{"ip": ip}]}
+    else:
+        return {"addresses": []}
+
 def get_edge_tts_voices():
     """Get available Edge TTS voices."""
     return {"voices": EDGE_TTS_VOICES}
@@ -313,3 +331,35 @@ def health_check():
         "service": "mlx-studio",
         "version": "2.0.0"
     }
+
+
+# =============================================================================
+# Model Cache Settings
+# =============================================================================
+
+class ModelCacheSettings(BaseModel):
+    max_size: Optional[int] = None
+
+@router.get("/api/settings/model-cache")
+def get_model_cache_settings():
+    """Get current model cache settings."""
+    from mlx_omni_server.chat.mlx.wrapper_cache import wrapper_cache
+    cache_info = wrapper_cache.get_cache_info()
+    return {
+        "max_size": cache_info.get("max_size", 1),
+        "current_size": cache_info.get("cache_size", 0),
+        "cached_models": cache_info.get("cached_keys", []),
+        "kv_bits": os.environ.get("MLX_KV_BITS"),
+    }
+
+@router.post("/api/settings/model-cache")
+def update_model_cache_settings(settings: ModelCacheSettings):
+    """Update model cache settings (applies immediately)."""
+    from mlx_omni_server.chat.mlx.wrapper_cache import wrapper_cache
+
+    if settings.max_size is not None:
+        wrapper_cache.set_max_size(settings.max_size)
+        os.environ["MLX_MODEL_CACHE_SIZE"] = str(settings.max_size)
+        logger.info(f"Updated model cache max_size to {settings.max_size}")
+
+    return get_model_cache_settings()

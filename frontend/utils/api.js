@@ -206,8 +206,8 @@ export const endpoints = {
     // Generation stats - not available as separate endpoint
     generationStats: async () => ({ generating: false }),
 
-    // Network - not implemented
-    network: async () => ({ addresses: [] }),
+    // Network endpoint
+    network: () => api.get('/api/network'),
 
     // HuggingFace integration (MLX Studio extension)
     hfSearch: (query, limit = 20, backend = 'all') => api.get(`/api/models/search?q=${encodeURIComponent(query)}&limit=${limit}&backend=${backend}`),

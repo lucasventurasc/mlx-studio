@@ -242,7 +242,11 @@ def get_loaded_models():
 
 @router.post("/unload")
 def unload_model(model_id: str = None):
-    """Unload model(s) from memory cache and free GPU memory."""
+    """Unload model(s) from memory cache and free GPU memory.
+
+    Args:
+        model_id: Specific model to unload. If None, unloads ALL models.
+    """
     import mlx.core as mx
     from mlx_omni_server.chat.mlx.wrapper_cache import wrapper_cache
     from extensions.gguf_backend import gguf_server
@@ -250,6 +254,30 @@ def unload_model(model_id: str = None):
     with _mlx_lock:
         try:
             gguf_stopped = False
+
+            # If specific model_id provided, only unload that model
+            if model_id:
+                removed = wrapper_cache.remove_model(model_id)
+
+                # Clear GPU memory
+                gc.collect()
+                mx.metal.clear_cache()
+
+                if removed:
+                    logger.info(f"Unloaded model: {model_id}")
+                    return {
+                        "status": "unloaded",
+                        "model_id": model_id,
+                        "message": f"Model {model_id} unloaded"
+                    }
+                else:
+                    return {
+                        "status": "not_found",
+                        "model_id": model_id,
+                        "message": f"Model {model_id} was not loaded"
+                    }
+
+            # No model_id = unload ALL models
             if gguf_server.is_running():
                 gguf_server.stop()
                 gguf_stopped = True

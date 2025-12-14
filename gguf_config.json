@@ -13,7 +13,7 @@
     "-c",
     "131072"
   ],
-  "current_model": "/Users/lucasventura/.lmstudio/models/bartowski/Qwen3-4B-Instruct-2507-GGUF/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+  "current_model": null,
   "draft_model": null,
   "draft_n": 32,
   "draft_p_min": 0.8,

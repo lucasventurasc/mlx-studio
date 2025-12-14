@@ -259,7 +259,7 @@ def apply_patches():
     """Apply all necessary patches to mlx-omni-server."""
     _patch_mlx_lm_utils()
     _patch_chat_generator()
-    _patch_chat_template_tools()  # Enable tool parsing for Qwen CLI
+    # _patch_chat_template_tools()  # Disabled - mlx-omni-server has native Qwen3 tool support
 
 
 def _patch_mlx_lm_utils():

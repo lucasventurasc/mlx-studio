@@ -208,3 +208,19 @@ __marimo__/
 models
 
 venv-omni/
+
+# MLX Studio local configs (user-specific)
+ISSUES.md
+litellm_config.yaml
+inference_settings.json
+remotes.json
+
+# AI assistant notes
+QWEN.md
+**/QWEN.md
+
+# macOS
+.DS_Store
+
+# Logs
+logs/
