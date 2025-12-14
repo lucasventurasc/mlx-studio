@@ -32,6 +32,27 @@ If you like what I'm creating, a coffee ☕ goes a long way! <a href="https://ww
 - **Voice Mode**: Real-time voice conversations with STT/TTS
 - **Web UI**: Model management, logs, and chat interface
 
+## Comparison
+
+| Feature | MLX Studio | Ollama | LM Studio |
+|---------|------------|--------|-----------|
+| **Prompt Caching** | ✅ Smart (99%+ hit rate) | ❌ | ✅ Basic |
+| **MLX Backend** | ✅ Native | ❌ | ✅ |
+| **GGUF Backend** | ✅ via llama.cpp | ✅ | ✅ |
+| **Anthropic API** | ✅ | ❌ | ❌ |
+| **OpenAI API** | ✅ | ✅ | ✅ |
+| **Auto-load Models** | ✅ | ✅ | ✅ |
+| **Voice Mode** | ✅ STT/TTS | ❌ | ❌ |
+| **Web UI** | ✅ | ❌ | ✅ Desktop |
+| **Cross-platform** | macOS only | ✅ | ✅ |
+| **Open Source** | ✅ | ✅ | ❌ |
+
+**When to use MLX Studio**: You want the fastest inference on Apple Silicon with smart prompt caching, Anthropic API compatibility (for Claude Code), or voice mode.
+
+**When to use Ollama**: You need cross-platform support or prefer a simpler CLI-focused workflow.
+
+**When to use LM Studio**: You prefer a polished desktop GUI and don't need Anthropic API or advanced caching.
+
 ## Quick Start
 
 ### Terminal (Recommended)
