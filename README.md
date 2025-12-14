@@ -43,8 +43,8 @@ If you like what I'm creating, a coffee ☕ goes a long way! <a href="https://ww
 | **OpenAI API** | ✅ | ✅ | ✅ |
 | **Auto-load Models** | ✅ | ✅ | ✅ |
 | **Voice Mode** | ✅ STT/TTS | ❌ | ❌ |
-| **Web UI** | ✅ | ❌ | ✅ Desktop |
-| **LAN Sharing** | ✅ Browser access | ✅ API only | ✅ API only |
+| **Web UI** | ✅ Full | ✅ Basic | ✅ Desktop |
+| **LAN Sharing** | ✅ Browser access | ✅ Browser access | ✅ API only |
 | **Cross-platform** | macOS only | ✅ | ✅ |
 | **Open Source** | ✅ | ✅ | ❌ |
 
