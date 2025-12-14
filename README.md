@@ -404,9 +404,46 @@ Content-Type: application/json
 - 4B models may hallucinate tool calls instead of executing them
 
 ### Thinking Mode
-- `enable_thinking` is disabled by default for local models
-- Qwen3's thinking mode adds 3-5K tokens of internal reasoning
-- Enable via `extra_body: {"enable_thinking": true}` if needed
+
+Qwen3 models support a "thinking" mode where the model generates internal reasoning before responding. This is controlled by two parameters:
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `enable_thinking` | Activates thinking mode (model generates `<think>...</think>` internally) | `false` |
+| `stream_options.include_thinking` | Whether to stream thinking content to client | `false` |
+
+**Use cases:**
+- **For agents (Claude Code, etc.)**: Use `enable_thinking: true` only — thinking is processed but filtered from output
+- **For UI (Crush, chat apps)**: Use both `enable_thinking: true` + `stream_options: {include_thinking: true}` — thinking is streamed to display
+
+**Example requests:**
+
+```bash
+# Agent mode: thinking enabled but filtered (recommended for coding agents)
+curl http://localhost:8080/v1/chat/completions \
+  -d '{"model": "qwen3-4b", "messages": [...], "enable_thinking": true}'
+
+# UI mode: thinking enabled and streamed (for chat interfaces)
+curl http://localhost:8080/v1/chat/completions \
+  -d '{"model": "qwen3-4b", "messages": [...], "enable_thinking": true, "stream_options": {"include_thinking": true}}'
+```
+
+**Client configuration:**
+
+For Crush (`~/.config/crush/crush.json`), the `can_reason` field controls `enable_thinking`:
+```json
+{
+  "id": "mlx-community/Qwen3-4B-4bit",
+  "name": "Qwen3 4B (Thinking)",
+  "can_reason": true,  // sends enable_thinking: true
+  ...
+}
+```
+
+**Notes:**
+- Thinking mode adds 3-5K tokens of internal reasoning overhead
+- Models under 4B parameters may not benefit significantly from thinking mode
+- Without `include_thinking`, the `<think>` tags are automatically filtered from responses
 
 ## Troubleshooting
 
