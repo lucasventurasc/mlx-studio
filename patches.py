@@ -105,6 +105,14 @@ def _detect_backend(model_path: str, tier_config: dict = None) -> str:
     return "mlx"
 
 
+def _expand_path(path: str) -> str:
+    """Expand ~ and environment variables in path."""
+    import os
+    if path.startswith("~"):
+        path = os.path.expanduser(path)
+    return os.path.expandvars(path)
+
+
 def resolve_alias(model_id: str) -> str:
     """Resolve a model alias to its full path, with Claude routing and wildcard support.
 
@@ -140,7 +148,7 @@ def resolve_alias_with_backend(model_id: str) -> tuple:
 
     # 1. Direct alias match (highest priority - exact match)
     if model_id in _MODEL_ALIASES:
-        resolved = _MODEL_ALIASES[model_id]
+        resolved = _expand_path(_MODEL_ALIASES[model_id])
         backend = _detect_backend(resolved)
         print(f"[patches] Resolved alias '{model_id}' -> '{resolved}' (backend={backend})")
         return resolved, backend
@@ -151,9 +159,10 @@ def resolve_alias_with_backend(model_id: str) -> tuple:
         # Only check patterns that contain wildcards
         if '*' in pattern or '?' in pattern:
             if fnmatch.fnmatch(model_id, pattern):
-                backend = _detect_backend(target)
-                print(f"[patches] Resolved wildcard alias '{pattern}' for '{model_id}' -> '{target}' (backend={backend})")
-                return target, backend
+                resolved = _expand_path(target)
+                backend = _detect_backend(resolved)
+                print(f"[patches] Resolved wildcard alias '{pattern}' for '{model_id}' -> '{resolved}' (backend={backend})")
+                return resolved, backend
 
     # 3. Claude model routing (for claude-* models not matched by aliases)
     if model_id.startswith("claude-"):
@@ -166,23 +175,26 @@ def resolve_alias_with_backend(model_id: str) -> tuple:
             tier_model = tier_config.get("model")
 
             if tier_model:
-                backend = _detect_backend(tier_model, tier_config)
-                print(f"[patches] Routed Claude '{model_id}' ({tier}) -> '{tier_model}' (backend={backend})")
-                return tier_model, backend
+                resolved = _expand_path(tier_model)
+                backend = _detect_backend(resolved, tier_config)
+                print(f"[patches] Routed Claude '{model_id}' ({tier}) -> '{resolved}' (backend={backend})")
+                return resolved, backend
 
         # Fallback to default_model from routing config
         default_model = _ROUTING_CONFIG.get("default_model")
         if default_model:
-            backend = _detect_backend(default_model)
-            print(f"[patches] Routed Claude '{model_id}' (default) -> '{default_model}' (backend={backend})")
-            return default_model, backend
+            resolved = _expand_path(default_model)
+            backend = _detect_backend(resolved)
+            print(f"[patches] Routed Claude '{model_id}' (default) -> '{resolved}' (backend={backend})")
+            return resolved, backend
 
         # Final fallback to aliases
         fallback = _MODEL_ALIASES.get("qwen3-coder-30b") or _MODEL_ALIASES.get("qwen")
         if fallback:
-            backend = _detect_backend(fallback)
-            print(f"[patches] Resolved Claude model '{model_id}' -> '{fallback}' (fallback, backend={backend})")
-            return fallback, backend
+            resolved = _expand_path(fallback)
+            backend = _detect_backend(resolved)
+            print(f"[patches] Resolved Claude model '{model_id}' -> '{resolved}' (fallback, backend={backend})")
+            return resolved, backend
 
     # No resolution - detect backend from original model_id
     backend = _detect_backend(model_id)

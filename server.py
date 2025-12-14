@@ -228,7 +228,7 @@ def main():
 
     print(f"""║  API:   /v1/chat/completions (OpenAI)                   ║
 ║  API:   /anthropic/v1/messages (Anthropic)              ║
-║  Models in memory: {model_cache_size:<3} | KV bits: {kv_bits:<4}                  ║
+║  Max cache size: {model_cache_size:<3}  | KV bits: {kv_bits:<4}                  ║
 ╚═══════════════════════════════════════════════════════════╝
 """)
 

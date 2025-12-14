@@ -19,7 +19,7 @@ MLX Studio wraps [mlx-omni-server](https://github.com/madroidmaq/mlx-omni-server
 ## Key Features
 
 - **Smart Prompt Caching**: 99%+ cache hit rates with automatic KV cache reuse
-- **On-Demand Model Loading**: Load models when needed, keep only 1 in memory
+- **On-Demand Model Loading**: Auto-load on first request, auto-unload via LRU when switching models
 - **Dual Backend**: MLX (fastest) and GGUF via llama.cpp
 - **Claude Code Compatible**: Drop-in replacement for Anthropic API
 - **OpenAI Compatible**: Works with any OpenAI client
