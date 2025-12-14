@@ -44,10 +44,11 @@ If you like what I'm creating, a coffee ☕ goes a long way! <a href="https://ww
 | **Auto-load Models** | ✅ | ✅ | ✅ |
 | **Voice Mode** | ✅ STT/TTS | ❌ | ❌ |
 | **Web UI** | ✅ | ❌ | ✅ Desktop |
+| **LAN Sharing** | ✅ Browser access | ✅ API only | ✅ API only |
 | **Cross-platform** | macOS only | ✅ | ✅ |
 | **Open Source** | ✅ | ✅ | ❌ |
 
-**When to use MLX Studio**: You want the fastest inference on Apple Silicon with smart prompt caching, Anthropic API compatibility (for Claude Code), or voice mode.
+**When to use MLX Studio**: You want the fastest inference on Apple Silicon with smart prompt caching, Anthropic API compatibility (for Claude Code), voice mode, or share models on your local network via browser.
 
 **When to use Ollama**: You need cross-platform support or prefer a simpler CLI-focused workflow.
 
