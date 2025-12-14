@@ -45,6 +45,36 @@ make install
 ./multi-llm.sh
 ```
 
+### Download Models
+
+MLX Studio auto-downloads models on first use, or you can pre-download:
+
+```bash
+# Install huggingface CLI (if not installed)
+pip install huggingface_hub
+
+# Recommended starter models
+huggingface-cli download mlx-community/Qwen2.5-Coder-14B-Instruct-4bit    # 8GB, great for coding
+huggingface-cli download mlx-community/Llama-3.2-3B-Instruct-4bit         # 2GB, fast & lightweight
+huggingface-cli download mlx-community/Qwen3-4B-Instruct-4bit             # 2GB, good quality
+```
+
+Or use the **Web UI** at http://localhost:8080 → Models → Search HF to browse and download.
+
+<details>
+<summary>Recommended models by use case</summary>
+
+| Use Case | Model | Size | Notes |
+|----------|-------|------|-------|
+| Coding (best) | `Qwen2.5-Coder-14B-Instruct-4bit` | 8GB | Best for agentic coding |
+| Coding (fast) | `Qwen2.5-Coder-7B-Instruct-4bit` | 4GB | Good balance |
+| General | `Llama-3.2-3B-Instruct-4bit` | 2GB | Fast, lightweight |
+| General | `Qwen3-4B-Instruct-4bit` | 2GB | Good quality |
+| Large context | `Qwen3-30B-A3B-Instruct-4bit` | 9GB | MoE, 128K context |
+
+All models from [mlx-community](https://huggingface.co/mlx-community) on HuggingFace.
+</details>
+
 ### With Claude Code
 
 ```bash
