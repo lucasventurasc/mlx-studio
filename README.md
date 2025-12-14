@@ -2,6 +2,8 @@
 
 **High-performance local LLM server for Apple Silicon with intelligent caching and multi-backend support**
 
+If this project helped you, consider supporting it: <a href="https://www.buymeacoffee.com/lucasventurasc" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="28" style="vertical-align: middle;"></a>
+
 MLX Studio wraps [mlx-omni-server](https://github.com/madroidmaq/mlx-omni-server) with production-ready features: smart prompt caching (99%+ cache hit rates), on-demand model loading, Claude Code integration, and a web UI.
 
 > [!WARNING]
