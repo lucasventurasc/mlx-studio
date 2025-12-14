@@ -53,10 +53,14 @@ MLX Studio auto-downloads models on first use, or you can pre-download:
 # Install huggingface CLI (if not installed)
 pip install huggingface_hub
 
-# Recommended starter models
+# MLX models (Apple Silicon - fastest)
 huggingface-cli download mlx-community/Qwen2.5-Coder-14B-Instruct-4bit    # 8GB, great for coding
 huggingface-cli download mlx-community/Llama-3.2-3B-Instruct-4bit         # 2GB, fast & lightweight
 huggingface-cli download mlx-community/Qwen3-4B-Instruct-4bit             # 2GB, good quality
+
+# GGUF models (Any platform via llama.cpp)
+huggingface-cli download bartowski/Qwen2.5-Coder-14B-Instruct-GGUF --include "*.Q4_K_M.gguf"
+huggingface-cli download bartowski/Llama-3.2-3B-Instruct-GGUF --include "*.Q4_K_M.gguf"
 ```
 
 Or use the **Web UI** at http://localhost:8080 → Models → Search HF to browse and download.
@@ -64,15 +68,22 @@ Or use the **Web UI** at http://localhost:8080 → Models → Search HF to brows
 <details>
 <summary>Recommended models by use case</summary>
 
+**MLX (Apple Silicon only - fastest)**
 | Use Case | Model | Size | Notes |
 |----------|-------|------|-------|
-| Coding (best) | `Qwen2.5-Coder-14B-Instruct-4bit` | 8GB | Best for agentic coding |
-| Coding (fast) | `Qwen2.5-Coder-7B-Instruct-4bit` | 4GB | Good balance |
-| General | `Llama-3.2-3B-Instruct-4bit` | 2GB | Fast, lightweight |
-| General | `Qwen3-4B-Instruct-4bit` | 2GB | Good quality |
-| Large context | `Qwen3-30B-A3B-Instruct-4bit` | 9GB | MoE, 128K context |
+| Coding (best) | `mlx-community/Qwen2.5-Coder-14B-Instruct-4bit` | 8GB | Best for agentic coding |
+| Coding (fast) | `mlx-community/Qwen2.5-Coder-7B-Instruct-4bit` | 4GB | Good balance |
+| General | `mlx-community/Llama-3.2-3B-Instruct-4bit` | 2GB | Fast, lightweight |
+| General | `mlx-community/Qwen3-4B-Instruct-4bit` | 2GB | Good quality |
+| Large context | `mlx-community/Qwen3-30B-A3B-Instruct-4bit` | 9GB | MoE, 128K context |
 
-All models from [mlx-community](https://huggingface.co/mlx-community) on HuggingFace.
+**GGUF (Any platform via llama.cpp)**
+| Use Case | Model | Size | Notes |
+|----------|-------|------|-------|
+| Coding | `bartowski/Qwen2.5-Coder-14B-Instruct-GGUF` | 8GB | Q4_K_M recommended |
+| General | `bartowski/Llama-3.2-3B-Instruct-GGUF` | 2GB | Q4_K_M recommended |
+| General | `bartowski/Qwen3-4B-Instruct-GGUF` | 2GB | Q4_K_M recommended |
+
 </details>
 
 ### With Claude Code
