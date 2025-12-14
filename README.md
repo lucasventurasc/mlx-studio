@@ -16,6 +16,15 @@ MLX Studio wraps [mlx-omni-server](https://github.com/madroidmaq/mlx-omni-server
 >
 > If you're looking for production-ready inference, use the upstream projects. If you want to tinker, benchmark, or adapt things to your own use case — this might be useful as a starting point.
 
+---
+
+<p>
+If this project helps you, consider supporting:
+<a href="https://www.buymeacoffee.com/lucasventurasc" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="40"></a>
+</p>
+
+---
+
 ## Key Features
 
 - **Smart Prompt Caching**: 99%+ cache hit rates with automatic KV cache reuse
@@ -25,8 +34,6 @@ MLX Studio wraps [mlx-omni-server](https://github.com/madroidmaq/mlx-omni-server
 - **OpenAI Compatible**: Works with any OpenAI client
 - **Voice Mode**: Real-time voice conversations with STT/TTS
 - **Web UI**: Model management, logs, and chat interface
-
-If this project helps you, consider supporting: <a href="https://www.buymeacoffee.com/lucasventurasc" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="24" style="vertical-align: middle; margin-left: 4px;"></a>
 
 ## Quick Start
 
