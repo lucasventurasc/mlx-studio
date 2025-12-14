@@ -19,7 +19,7 @@ MLX Studio wraps [mlx-omni-server](https://github.com/madroidmaq/mlx-omni-server
 ---
 
 <p>
-If this project helps you, consider supporting:
+If you like what I'm creating, a coffee ☕ goes a long way!
 <a href="https://www.buymeacoffee.com/lucasventurasc" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="40"></a>
 </p>
 
