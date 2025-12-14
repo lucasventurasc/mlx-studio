@@ -26,9 +26,7 @@ MLX Studio wraps [mlx-omni-server](https://github.com/madroidmaq/mlx-omni-server
 - **Voice Mode**: Real-time voice conversations with STT/TTS
 - **Web UI**: Model management, logs, and chat interface
 
-If you like what I’m creating, a coffee ☕ goes a long way!
-
-<a href="https://www.buymeacoffee.com/lucasventurasc" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="28" style="vertical-align: middle;"></a>
+If this project helps you, consider supporting: <a href="https://www.buymeacoffee.com/lucasventurasc" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="24" style="vertical-align: middle; margin-left: 4px;"></a>
 
 ## Quick Start
 
