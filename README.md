@@ -4,6 +4,18 @@
 
 MLX Studio wraps [mlx-omni-server](https://github.com/madroidmaq/mlx-omni-server) with production-ready features: smart prompt caching (99%+ cache hit rates), on-demand model loading, Claude Code integration, and a web UI.
 
+> [!WARNING]
+> **Experimental Project** — This is a personal project that hasn't been extensively tested. Expect bugs, rough edges, and breaking changes. Use at your own risk. Contributions and bug reports are welcome!
+
+> [!NOTE]
+> **Why this project exists**
+>
+> MLX Studio started as a personal experiment to benchmark different AI coding assistants (Claude Code, Cursor, Qwen CLI, Crush) with various local models, and to push the limits of agentic coding on Apple Silicon through server-side optimizations.
+>
+> This project does **not** aim to replace mature tools like [mlx-omni-server](https://github.com/madroidmaq/mlx-omni-server), [llama.cpp](https://github.com/ggerganov/llama.cpp), or [vLLM](https://github.com/vllm-project/vllm). Instead, it's a playground for experimenting with caching strategies, model routing, and customizations that might better fit specific workflows.
+>
+> If you're looking for production-ready inference, use the upstream projects. If you want to tinker, benchmark, or adapt things to your own use case — this might be useful as a starting point.
+
 ## Key Features
 
 - **Smart Prompt Caching**: 99%+ cache hit rates with automatic KV cache reuse
