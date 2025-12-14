@@ -73,6 +73,96 @@ Open http://localhost:8080 in your browser for:
 - Settings management
 - Voice mode
 
+## Tested Integrations
+
+| Tool | API | Status | Notes |
+|------|-----|--------|-------|
+| [Claude Code](https://claude.ai/code) | Anthropic | ✅ Tested | Full support including tool use |
+| [Crush](https://crush.ai) | OpenAI | ✅ Tested | Works well for agentic coding |
+| [Qwen CLI](https://github.com/QwenLM/Qwen-Agent) | OpenAI | ✅ Tested | Native Qwen model support |
+| [Cline](https://github.com/cline/cline) | OpenAI | ✅ Tested | VS Code extension |
+| [Cursor](https://cursor.sh) | OpenAI | 🔄 Untested | Should work (OpenAI compatible) |
+| [Continue](https://continue.dev) | OpenAI | 🔄 Untested | Should work (OpenAI compatible) |
+
+### Configuration Examples
+
+<details>
+<summary><strong>Claude Code</strong></summary>
+
+```bash
+# Set environment variables
+export ANTHROPIC_BASE_URL=http://localhost:8080/anthropic
+export ANTHROPIC_API_KEY=sk-local
+
+# Run Claude Code
+claude
+```
+
+Or in a single line:
+```bash
+ANTHROPIC_BASE_URL=http://localhost:8080/anthropic ANTHROPIC_API_KEY=sk-local claude
+```
+</details>
+
+<details>
+<summary><strong>Crush</strong></summary>
+
+Add to `~/.config/crush/config.yaml`:
+```yaml
+providers:
+  - name: mlx-studio
+    kind: openai
+    baseUrl: http://localhost:8080/v1
+    apiKey: not-needed
+    models:
+      - qwen3-coder-30b
+      - qwen2.5-coder-14b
+```
+
+Then select the model in Crush settings.
+</details>
+
+<details>
+<summary><strong>Qwen CLI</strong></summary>
+
+```bash
+# Using environment variables
+export OPENAI_BASE_URL=http://localhost:8080/v1
+export OPENAI_API_KEY=not-needed
+
+qwen-cli --model qwen3-coder-30b
+```
+</details>
+
+<details>
+<summary><strong>Cline (VS Code)</strong></summary>
+
+1. Open Cline settings in VS Code
+2. Set API Provider to "OpenAI Compatible"
+3. Set Base URL: `http://localhost:8080/v1`
+4. Set API Key: `not-needed`
+5. Set Model: `qwen3-coder-30b`
+</details>
+
+<details>
+<summary><strong>Any OpenAI Client (Python)</strong></summary>
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://localhost:8080/v1",
+    api_key="not-needed"
+)
+
+response = client.chat.completions.create(
+    model="qwen3-coder-30b",
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+print(response.choices[0].message.content)
+```
+</details>
+
 ## Command Line Options
 
 ```bash
