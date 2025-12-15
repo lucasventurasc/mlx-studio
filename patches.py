@@ -291,6 +291,7 @@ def apply_patches():
     _patch_mlx_lm_utils()
     _patch_chat_generator()
     _patch_kv_bits_for_rotating_cache()
+    _patch_stream_generation_debug()  # Add detailed logging for stream debugging
     # GPT-OSS channel format support (isolated in separate module)
     from extensions.gpt_oss_adapter import patch_openai_adapter as patch_gpt_oss
     patch_gpt_oss()
@@ -449,6 +450,166 @@ def _patch_kv_bits_for_rotating_cache():
 
     ChatGenerator._create_mlx_kwargs = patched_create_mlx_kwargs
     print("[patches] Added RotatingKVCache compatibility for kv_bits")
+
+
+def _patch_stream_generation_debug():
+    """
+    Add detailed logging to stream generation to diagnose mid-stream cutoffs.
+    Logs every step of the streaming process to help identify where it stops.
+    Also patches OpenAI adapter to log tool call detection.
+    """
+    from mlx_omni_server.chat.mlx.chat_generator import ChatGenerator
+    from mlx_omni_server.chat.openai.openai_adapter import OpenAIAdapter
+    import logging
+
+    logger = logging.getLogger("mlx-studio.stream-debug")
+
+    # Patch 1: ChatGenerator stream logging
+    original_generate_stream = ChatGenerator.generate_stream
+
+    def patched_generate_stream(self, *args, **kwargs):
+        """Wrapper that adds detailed logging to stream generation."""
+        try:
+            logger.info("=== STREAM START ===")
+            chunk_count = 0
+            last_text = ""
+
+            for result in original_generate_stream(self, *args, **kwargs):
+                chunk_count += 1
+
+                # Log chunk details
+                if hasattr(result, 'content'):
+                    if hasattr(result.content, 'text_delta') and result.content.text_delta:
+                        last_text = result.content.text_delta
+                        logger.debug(f"Chunk {chunk_count}: text_delta='{last_text[:50]}...'")
+                    elif hasattr(result.content, 'reasoning_delta') and result.content.reasoning_delta:
+                        logger.debug(f"Chunk {chunk_count}: reasoning_delta (thinking mode)")
+
+                if hasattr(result, 'finish_reason') and result.finish_reason:
+                    logger.info(f"Chunk {chunk_count}: finish_reason={result.finish_reason}")
+
+                yield result
+
+            logger.info(f"=== STREAM END === (total chunks: {chunk_count})")
+
+        except GeneratorExit:
+            logger.warning(f"=== STREAM CANCELLED === (client disconnected after {chunk_count} chunks)")
+            raise
+        except Exception as e:
+            logger.error(f"=== STREAM ERROR === after {chunk_count} chunks: {e}", exc_info=True)
+            raise
+
+    ChatGenerator.generate_stream = patched_generate_stream
+
+    # Patch 2: OpenAI adapter to log tool call detection
+    original_generate_stream_adapter = OpenAIAdapter.generate_stream
+
+    def patched_generate_stream_adapter(self, request):
+        """Wrapper that logs tool call marker detection."""
+        import time
+        from mlx_omni_server.chat.openai.schema import ChatMessage, ChatCompletionChunk, ChatCompletionChunkChoice, Role
+
+        chat_id = f"chatcmpl-{__import__('uuid').uuid4().hex[:10]}"
+        accumulated_text = ""
+        buffer = ""
+        in_tool_call = False
+        result = None
+
+        TOOL_MARKERS = ['<tool_call>', '<function=']
+        MAX_MARKER_LEN = max(len(m) for m in TOOL_MARKERS)
+
+        include_thinking = (
+            request.stream_options.include_thinking
+            if request.stream_options
+            else False
+        )
+
+        try:
+            for chunk in self._generate_wrapper.generate_stream(**self._prepare_generation_params(request)):
+                created = int(time.time())
+
+                if chunk.content.text_delta:
+                    content = chunk.content.text_delta
+                    accumulated_text += content
+                elif chunk.content.reasoning_delta:
+                    if include_thinking:
+                        content = chunk.content.reasoning_delta
+                    else:
+                        result = chunk
+                        continue
+                else:
+                    content = ""
+
+                if not content:
+                    result = chunk
+                    continue
+
+                # Buffer content to detect tool call markers
+                if not in_tool_call:
+                    buffer += content
+
+                    # Check if buffer contains start of tool call
+                    for marker in TOOL_MARKERS:
+                        if marker in buffer:
+                            logger.warning(f"⚠️ TOOL MARKER DETECTED: '{marker}' in buffer context: '{buffer[-100:]}'")
+                            logger.warning(f"   Accumulated text so far: {len(accumulated_text)} chars")
+                            logger.warning(f"   Stopping stream to parse tool call")
+                            in_tool_call = True
+                            buffer = ""
+                            break
+
+                    # If not in tool call, yield buffered content
+                    if not in_tool_call and len(buffer) > MAX_MARKER_LEN:
+                        to_yield = buffer[:-MAX_MARKER_LEN]
+                        buffer = buffer[-MAX_MARKER_LEN:]
+
+                        message = ChatMessage(role=Role.ASSISTANT, content=to_yield)
+                        yield ChatCompletionChunk(
+                            id=chat_id,
+                            created=created,
+                            model=request.model,
+                            choices=[
+                                ChatCompletionChunkChoice(
+                                    index=0,
+                                    delta=message,
+                                    finish_reason=None,
+                                    logprobs=chunk.logprobs,
+                                )
+                            ],
+                        )
+
+                result = chunk
+
+            # Flush remaining buffer if not in tool call
+            if buffer and not in_tool_call:
+                message = ChatMessage(role=Role.ASSISTANT, content=buffer)
+                yield ChatCompletionChunk(
+                    id=chat_id,
+                    created=int(time.time()),
+                    model=request.model,
+                    choices=[
+                        ChatCompletionChunkChoice(
+                            index=0,
+                            delta=message,
+                            finish_reason=None,
+                            logprobs=None,
+                        )
+                    ],
+                )
+
+            # Continue with rest of original implementation for final chunk and tool parsing
+            # Calling original to handle final chunk emission
+            for final_chunk in original_generate_stream_adapter(self, request):
+                yield final_chunk
+
+        except Exception as e:
+            logger.error(f"Error in patched stream adapter: {e}", exc_info=True)
+            raise
+
+    # Don't apply this patch - too complex, just use logging from ChatGenerator
+    # OpenAIAdapter.generate_stream = patched_generate_stream_adapter
+
+    print("[patches] Added stream generation debug logging")
 
 
     # GPT-OSS channel format code moved to extensions/gpt_oss_adapter.py
