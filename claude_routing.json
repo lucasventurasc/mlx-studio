@@ -2,23 +2,20 @@
   "enabled": true,
   "tiers": {
     "haiku": {
-      "model": "qwen3-4b",
-      "draft_model": "",
-      "backend": "mlx",
+      "model": "/Users/lucasventura/.lmstudio/models/unsloth/Qwen3-Next-80B-A3B-Instruct-GGUF/Qwen3-Next-80B-A3B-Instruct-Q3_K_S.gguf",
+      "backend": "gguf",
       "context_length": 32768,
-      "max_tokens": 4096
+      "max_tokens": 8192
     },
     "sonnet": {
-      "model": "qwen3-coder-30b",
-      "draft_model": "",
-      "backend": "mlx",
-      "context_length": 131072,
+      "model": "/Users/lucasventura/.lmstudio/models/unsloth/Qwen3-Next-80B-A3B-Instruct-GGUF/Qwen3-Next-80B-A3B-Instruct-Q3_K_S.gguf",
+      "backend": "gguf",
+      "context_length": 65536,
       "max_tokens": 16384
     },
     "opus": {
-      "model": "qwen3-coder-30b",
-      "draft_model": "",
-      "backend": "mlx",
+      "model": "/Users/lucasventura/.lmstudio/models/unsloth/Qwen3-Next-80B-A3B-Instruct-GGUF/Qwen3-Next-80B-A3B-Instruct-Q3_K_S.gguf",
+      "backend": "gguf",
       "context_length": 131072,
       "max_tokens": 32000
     }

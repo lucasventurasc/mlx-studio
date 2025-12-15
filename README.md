@@ -148,10 +148,10 @@ Open http://localhost:8080 in your browser for:
 
 ## Tested Integrations
 
-| Tool | API | Status | Notes |
-|------|-----|--------|-------|
-| [Claude Code](https://claude.ai/code) | Anthropic | ✅ Tested | Full support including tool use |
-| [Crush](https://crush.ai) | OpenAI | ✅ Tested | Works well for agentic coding |
+| Tool | API | Status | Tested Models |
+|------|-----|--------|---------------|
+| [Claude Code](https://claude.ai/code) | Anthropic | ✅ Tested | Qwen3-Next-80B-A3B (GGUF), Qwen3-Coder-30B-A3B (MLX) |
+| [Crush](https://crush.ai) | OpenAI | ✅ Tested | Qwen3-Coder-30B-A3B (MLX) |
 | [Qwen CLI](https://github.com/QwenLM/Qwen-Agent) | OpenAI | ✅ Tested | Native Qwen model support |
 | [Cline](https://github.com/cline/cline) | OpenAI | ✅ Tested | VS Code extension |
 | [Cursor](https://cursor.sh) | OpenAI | 🔄 Untested | Should work (OpenAI compatible) |
@@ -274,7 +274,7 @@ MLX_KV_BITS=8                # KV cache quantization (faster large context)
 ├─────────────────────────────────────────────────────────────┤
 │  Endpoints                                                   │
 │  ├── /v1/chat/completions (OpenAI)                          │
-│  ├── /anthropic/v1/messages (Anthropic)                     │
+│  ├── /anthropic/v1/messages (Anthropic via claude-code-proxy)│
 │  ├── /v1/audio/transcriptions (STT)                         │
 │  └── /v1/audio/speech (TTS)                                 │
 ├─────────────────────────────────────────────────────────────┤
@@ -282,6 +282,7 @@ MLX_KV_BITS=8                # KV cache quantization (faster large context)
 │  ├── Smart Prompt Cache (99%+ hit rate)                     │
 │  ├── Model Aliases (qwen → full/model/path)                 │
 │  ├── Claude Tier Routing (sonnet → local model)             │
+│  ├── Claude API Proxy (converts Anthropic → OpenAI)         │
 │  └── On-Demand Model Loading                                │
 ├─────────────────────────────────────────────────────────────┤
 │  Backends                                                    │
@@ -493,6 +494,7 @@ make build-app
 ## Credits
 
 - [mlx-omni-server](https://github.com/madroidmaq/mlx-omni-server) - Core inference engine
+- [claude-code-proxy](https://github.com/fuergaosi233/claude-code-proxy) - Claude API to OpenAI conversion
 - [MLX](https://github.com/ml-explore/mlx) - Apple's ML framework
 - [mlx-lm](https://github.com/ml-explore/mlx-examples/tree/main/llms/mlx_lm) - Language model utilities
 - [llama.cpp](https://github.com/ggerganov/llama.cpp) - GGUF backend

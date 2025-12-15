@@ -1,3 +1,6 @@
 [submodule "vendor/mlx-omni-server"]
 	path = vendor/mlx-omni-server
 	url = git@github.com:lucasventurasc/mlx-omni-server.git
+[submodule "vendor/claude-code-proxy"]
+	path = vendor/claude-code-proxy
+	url = https://github.com/fuergaosi233/claude-code-proxy.git

@@ -78,6 +78,12 @@ sys.path.insert(0, str(VENDOR_PATH))
 from patches import apply_patches
 apply_patches()
 
+# =============================================================================
+# Configure Claude Code Proxy (must be done BEFORE importing proxy modules)
+# =============================================================================
+from extensions.claude_proxy import configure_proxy_for_local
+configure_proxy_for_local(port=_args.port)
+
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -86,7 +92,10 @@ from fastapi.staticfiles import StaticFiles
 
 # Import mlx-omni-server chat routers
 from mlx_omni_server.chat.openai.router import router as openai_router
-from mlx_omni_server.chat.anthropic.router import router as anthropic_router
+
+# Import claude-code-proxy router (converts Claude API -> OpenAI API)
+from extensions.claude_proxy import get_proxy_router
+claude_proxy_router = get_proxy_router()
 
 # Import audio routers (STT/TTS)
 from mlx_omni_server.stt import stt as stt_router
@@ -96,7 +105,7 @@ from mlx_omni_server.tts import tts as tts_router
 from routers.routing import router as routing_router
 from routers.gguf import router as gguf_router
 from routers.models import router as models_router, set_mlx_lock as set_models_lock
-from routers.cache import router as cache_router, set_mlx_lock as set_cache_lock, trigger_prewarm_if_needed
+from routers.cache import router as cache_router, set_mlx_lock as set_cache_lock
 from routers.misc import router as misc_router, setup_log_handler
 from routers.model_configs import router as model_configs_router
 
@@ -131,22 +140,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount mlx-omni-server routers
+# Mount mlx-omni-server OpenAI router
 app.include_router(openai_router, tags=["OpenAI"])
-app.include_router(anthropic_router, prefix="/anthropic", tags=["Anthropic"])
 
-# Configure pre-warm hook for Anthropic router
-try:
-    from mlx_omni_server.chat.anthropic.router import set_post_generation_hook
-
-    def prewarm_hook(resolved_model: str, messages: list):
-        """Hook called after each Anthropic generation to trigger pre-warm."""
-        trigger_prewarm_if_needed(resolved_model, messages, logger)
-
-    set_post_generation_hook(prewarm_hook)
-    logger.info("Pre-warm hook configured for Anthropic router")
-except ImportError as e:
-    logger.warning(f"Could not configure pre-warm hook: {e}")
+# Mount claude-code-proxy for Anthropic API (converts to OpenAI internally)
+app.include_router(claude_proxy_router, prefix="/anthropic", tags=["Anthropic"])
 
 # Mount audio routers (STT/TTS for Voice Mode)
 app.include_router(stt_router.router, tags=["Audio"])
