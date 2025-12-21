@@ -24,9 +24,10 @@ This release adds native tool calling support for Mistral and Devstral models, e
 ### Performance Optimizations (v0.4.0)
 
 - **Stream-first approach**: Tokens stream immediately, only buffers after `[TOOL_CALLS]` detected
+- **Lookback buffer**: 3-chunk lookback prevents partial marker leakage across chunk boundaries
 - **O(n) string handling**: Uses list + join instead of O(n²) concatenation
 - **Module-level imports**: Schema classes imported once, not per request
-- **Rolling window detection**: 50-char window for marker detection across chunk boundaries
+- **Early marker detection**: Detects `[TOOL_CALLS` partial marker to switch to buffer mode early
 
 ### Supported Models
 
