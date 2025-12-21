@@ -11,11 +11,12 @@ This module:
 
 IMPORTANT: Only applies to Mistral/Devstral models.
 
-Performance: Uses stream-first approach - yields tokens immediately
-until [TOOL_CALLS] marker is detected, then buffers for parsing.
+Performance: Uses stream-first approach with lookback buffer to handle
+markers that span chunk boundaries.
 """
 
 import json
+from collections import deque
 
 # Import schema classes at module level (not in hot path)
 from mlx_omni_server.chat.openai.schema import (
@@ -33,8 +34,9 @@ from extensions.mistral_tools_parser import (
     has_mistral_tool_calls,
 )
 
-# Tool call marker
-TOOL_MARKER = '[TOOL_CALLS]'
+# Tool call marker (without closing bracket for partial detection)
+TOOL_MARKER_START = '[TOOL_CALLS]'
+TOOL_MARKER_PARTIAL = '[TOOL_CALLS'  # For early detection
 
 
 def is_mistral_model(model_id: str) -> bool:
@@ -102,10 +104,9 @@ def patch_openai_adapter():
         Stream-first wrapper that processes Mistral tool calls.
 
         Strategy:
-        - Stream chunks immediately (true streaming UX)
-        - Watch for [TOOL_CALLS] marker in the stream
-        - If marker detected, switch to buffering mode for parsing
-        - This gives best of both worlds: fast streaming + tool support
+        - Use a lookback buffer of N chunks before yielding
+        - This allows detecting markers that span chunk boundaries
+        - Once marker is detected, buffer everything for parsing
         """
         # Only process Mistral models - pass through directly for others
         if not is_mistral_model(request.model):
@@ -117,21 +118,24 @@ def patch_openai_adapter():
             yield from original_generate_stream(self, request)
             return
 
-        # Stream-first approach with lazy tool detection
+        # Lookback buffer - hold N chunks before yielding to catch split markers
+        LOOKBACK_SIZE = 3
+        lookback_buffer = deque(maxlen=LOOKBACK_SIZE)
+
         text_parts = []  # Use list for O(n) instead of string concat O(n²)
-        buffered_chunks = []
+        all_chunks = []  # Keep all chunks in case we need them
         first_chunk = None
         last_chunk = None
         tool_marker_detected = False
-        yielded_count = 0
 
-        # Rolling window to detect marker across chunk boundaries
-        recent_text = ""
+        # Accumulated text for marker detection
+        accumulated_text = ""
 
         for chunk in original_generate_stream(self, request):
             if first_chunk is None:
                 first_chunk = chunk
             last_chunk = chunk
+            all_chunks.append(chunk)
 
             # Extract content from chunk
             content = None
@@ -140,28 +144,29 @@ def patch_openai_adapter():
 
             if content:
                 text_parts.append(content)
-                recent_text += content
-                # Keep only last 50 chars for marker detection (marker is ~12 chars)
-                if len(recent_text) > 50:
-                    recent_text = recent_text[-50:]
+                accumulated_text += content
 
-            # Check for tool marker in recent text
-            if not tool_marker_detected and TOOL_MARKER in recent_text:
-                tool_marker_detected = True
-                # Start buffering from here - don't yield this or future chunks
-                buffered_chunks.append(chunk)
-                continue
+            # Check for tool marker (check partial to catch early)
+            if not tool_marker_detected:
+                if TOOL_MARKER_PARTIAL in accumulated_text:
+                    tool_marker_detected = True
+                    # Don't yield anything from here - buffer the rest
+                    continue
 
             if tool_marker_detected:
-                # In buffering mode - collect remaining chunks
-                buffered_chunks.append(chunk)
-            else:
-                # Stream mode - yield immediately for real-time UX
-                yield chunk
-                yielded_count += 1
+                # Already in buffer mode, just continue collecting
+                continue
 
-        # After generation completes, handle based on whether tools were detected
+            # Add to lookback buffer
+            lookback_buffer.append(chunk)
+
+            # Only yield when buffer is full (delayed streaming)
+            if len(lookback_buffer) == LOOKBACK_SIZE:
+                yield lookback_buffer[0]
+
+        # After generation completes
         if tool_marker_detected:
+            # We detected a tool marker - parse the full text
             full_text = ''.join(text_parts)
 
             if has_mistral_tool_calls(full_text):
@@ -202,8 +207,12 @@ def patch_openai_adapter():
                     )
                     return
 
-            # Tool marker was detected but parsing failed - yield buffered chunks
-            for chunk in buffered_chunks:
+            # Tool marker detected but parsing failed - yield all chunks
+            for chunk in all_chunks:
+                yield chunk
+        else:
+            # No tool marker - yield remaining chunks in lookback buffer
+            for chunk in lookback_buffer:
                 yield chunk
 
     OpenAIAdapter.generate = patched_generate
