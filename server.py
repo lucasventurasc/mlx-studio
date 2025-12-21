@@ -92,6 +92,7 @@ from fastapi.staticfiles import StaticFiles
 
 # Import mlx-omni-server chat routers
 from mlx_omni_server.chat.openai.router import router as openai_router
+from mlx_omni_server.chat.openai.models.models import router as openai_models_router
 
 # Import claude-code-proxy router (converts Claude API -> OpenAI API)
 from extensions.claude_proxy import get_proxy_router
@@ -140,8 +141,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount mlx-omni-server OpenAI router
+# Mount mlx-omni-server OpenAI routers
 app.include_router(openai_router, tags=["OpenAI"])
+app.include_router(openai_models_router, tags=["OpenAI Models"])
 
 # Mount claude-code-proxy for Anthropic API (converts to OpenAI internally)
 app.include_router(claude_proxy_router, prefix="/anthropic", tags=["Anthropic"])

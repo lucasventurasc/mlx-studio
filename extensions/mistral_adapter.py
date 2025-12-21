@@ -77,13 +77,12 @@ def patch_openai_adapter():
                         for tc in parsed_tools
                     ]
 
-                    # Get content before tool calls (if any)
-                    content_before = extract_content_before_tools(content)
+                    # Skip content before tool calls - match llama.cpp behavior
+                    # llama.cpp doesn't output explanation text before tool calls
 
                     response.choices[0].message.tool_calls = tool_calls
-                    response.choices[0].message.content = content_before
+                    response.choices[0].message.content = None
                     response.choices[0].finish_reason = "tool_calls"
-                    print(f"[mistral] Parsed {len(tool_calls)} tool call(s)")
 
         return response
 
@@ -104,7 +103,12 @@ def patch_openai_adapter():
             Role,
         )
 
-        # Buffer ALL chunks and accumulated text
+        # If no tools in request, stream directly without buffering
+        if not request.tools:
+            yield from original_generate_stream(self, request)
+            return
+
+        # Buffer chunks only when tools are defined (need to detect [TOOL_CALLS])
         all_chunks = []
         accumulated_text = ""
         first_chunk = None
@@ -123,27 +127,15 @@ def patch_openai_adapter():
                     accumulated_text += delta.content
 
         # Check if we have tool calls
-        if has_mistral_tool_calls(accumulated_text):
+        has_tools = has_mistral_tool_calls(accumulated_text)
+
+        if has_tools:
             parsed_tools = parse_mistral_tool_calls(accumulated_text)
 
             if parsed_tools:
-                # Get content before tool calls
-                content_before = extract_content_before_tools(accumulated_text)
-
-                # Yield content before tool call (if any)
-                if content_before:
-                    yield ChatCompletionChunk(
-                        id=first_chunk.id if first_chunk else "chatcmpl-0",
-                        created=first_chunk.created if first_chunk else 0,
-                        model=request.model,
-                        choices=[
-                            ChatCompletionChunkChoice(
-                                index=0,
-                                delta=ChatMessage(role=Role.ASSISTANT, content=content_before),
-                                finish_reason=None,
-                            )
-                        ],
-                    )
+                # Skip content before tool calls - match llama.cpp behavior
+                # llama.cpp doesn't output explanation text before tool calls
+                # content_before = extract_content_before_tools(accumulated_text)
 
                 # Build tool_calls with index for streaming format
                 # Create ToolCall objects and add index attribute dynamically
@@ -179,7 +171,6 @@ def patch_openai_adapter():
                     ],
                     usage=last_chunk.usage if last_chunk and hasattr(last_chunk, 'usage') else None,
                 )
-                print(f"[mistral] Parsed {len(parsed_tools)} tool call(s) from stream")
                 return
 
         # No tool calls - yield all buffered chunks
@@ -188,4 +179,3 @@ def patch_openai_adapter():
 
     OpenAIAdapter.generate = patched_generate
     OpenAIAdapter.generate_stream = patched_generate_stream
-    print("[mistral] Tool call adapter installed")
