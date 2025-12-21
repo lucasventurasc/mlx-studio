@@ -291,7 +291,7 @@ def apply_patches():
     _patch_mlx_lm_utils()
     _patch_chat_generator()
     _patch_kv_bits_for_rotating_cache()
-    _patch_stream_generation_debug()  # Add detailed logging for stream debugging
+    # _patch_stream_generation_debug()  # Disabled - too verbose for production
     # GPT-OSS channel format support (isolated in separate module)
     from extensions.gpt_oss_adapter import patch_openai_adapter as patch_gpt_oss
     patch_gpt_oss()
