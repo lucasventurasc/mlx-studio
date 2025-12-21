@@ -295,6 +295,9 @@ def apply_patches():
     # GPT-OSS channel format support (isolated in separate module)
     from extensions.gpt_oss_adapter import patch_openai_adapter as patch_gpt_oss
     patch_gpt_oss()
+    # Mistral/Devstral tool call parsing support
+    from extensions.mistral_adapter import patch_openai_adapter as patch_mistral
+    patch_mistral()
     # _patch_chat_template_tools()  # Disabled - mlx-omni-server has native Qwen3 tool support
 
 

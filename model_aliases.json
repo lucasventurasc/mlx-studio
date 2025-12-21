@@ -1,4 +1,5 @@
 {
+  "qwen3-next-80b-thinking": "/Users/lucasventura/.lmstudio/models/unsloth/Qwen3-Next-80B-A3B-Instruct-GGUF/Qwen3-Next-80B-A3B-Instruct-Q3_K_S.gguf",
   "qwen": "~/.lmstudio/models/mlx-community/Qwen3-4B-4bit",
   "qwen/qwen3-coder-30b": "~/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-6bit",
   "qwen/qwen2.5-coder-14b": "~/.lmstudio/models/lmstudio-community/Qwen2.5-Coder-14B-Instruct-MLX-4bit",
@@ -13,6 +14,17 @@
   "qwen3-0.6b": "~/.lmstudio/models/mlx-community/Qwen3-0.6B-4bit",
   "llama-3b": "~/.lmstudio/models/mlx-community/Llama-3.2-3B-Instruct-4bit",
   "deepseek-r1-8b": "~/.lmstudio/models/lmstudio-community/DeepSeek-R1-0528-Qwen3-8B-MLX-4bit",
-  "gpt-oss-20b": "~/.lmstudio/models/mlx-community/gpt-oss-20b-MXFP4-Q8",
-  "devstral-24b": "~/.lmstudio/models/mlx-community/Devstral-Small-2-24B-Instruct-2512-4bit"
+  "devstral-24b": "~/.lmstudio/models/mlx-community/Devstral-Small-2-24B-Instruct-2512-4bit",
+  "qwen3-next-80b-q4": "/Users/lucasventura/.lmstudio/models/unsloth/Qwen3-Next-80B-A3B-Instruct-GGUF/Qwen3-Next-80B-A3B-Instruct-Q4_K_M.gguf",
+  "qwen3-next-80b-q1": "/Users/lucasventura/.lmstudio/models/bartowski/Qwen_Qwen3-Next-80B-A3B-Instruct-GGUF/Qwen_Qwen3-Next-80B-A3B-Instruct-IQ1_M.gguf",
+  "qwen3-next-80b-q2": "/Users/lucasventura/.lmstudio/models/bartowski/Qwen_Qwen3-Next-80B-A3B-Instruct-GGUF/Qwen_Qwen3-Next-80B-A3B-Instruct-Q2_K_L.gguf",
+  "qwen3-next-80b-4bit": "/Users/lucasventura/.lmstudio/models/lmstudio-community/Qwen3-Next-80B-A3B-Instruct-MLX-4bit",
+  "qwen3-next-80b-mlx-4bit": "/Users/lucasventura/.lmstudio/models/lmstudio-community/Qwen3-Next-80B-A3B-Instruct-MLX-4bit",
+  "qwen3-next-80b-q3-km": "/Users/lucasventura/.lmstudio/models/bartowski/Qwen_Qwen3-Next-80B-A3B-Instruct-GGUF/Qwen_Qwen3-Next-80B-A3B-Instruct-Q3_K_M.gguf",
+  "qwen3-next-80b-q4-km": "/Users/lucasventura/.lmstudio/models/unsloth/Qwen3-Next-80B-A3B-Instruct-GGUF/Qwen3-Next-80B-A3B-Instruct-Q4_K_M.gguf",
+  "qwen3-coder-30b-mlx-4bit": "/Users/lucasventura/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit",
+  "deepseek-coder-v2-lite-instruct": "/Users/lucasventura/.lmstudio/models/mlx-community/DeepSeek-Coder-V2-Lite-Instruct-8bit",
+  "gpt-oss-20b": "/Users/lucasventura/.lmstudio/models/inferencerlabs/openai-gpt-oss-20b-MLX-6.5bit",
+  "gemma-27b": "/Users/lucasventura/.lmstudio/models/mlx-community/gemma-3-27b-it-qat-4bit",
+  "qwen3-next-80b": "/Users/lucasventura/.lmstudio/models/bartowski/Qwen_Qwen3-Next-80B-A3B-Instruct-GGUF/Qwen_Qwen3-Next-80B-A3B-Instruct-Q3_K_M.gguf"
 }
