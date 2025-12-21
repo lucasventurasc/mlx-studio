@@ -113,10 +113,8 @@ def patch_openai_adapter():
             yield from original_generate_stream(self, request)
             return
 
-        # If no tools in request, stream directly without any overhead
-        if not request.tools:
-            yield from original_generate_stream(self, request)
-            return
+        # NOTE: We parse tool calls regardless of request.tools
+        # The model outputs [TOOL_CALLS] format based on training, not request params
 
         # Lookback buffer - hold N chunks before yielding to catch split markers
         LOOKBACK_SIZE = 3
